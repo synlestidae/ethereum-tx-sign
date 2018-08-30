@@ -2,9 +2,7 @@
 name = "ethereum-tx-sign"
 version = "0.0.1"
 description = "Allows you to model a raw ethereum transaction and sign it with your private key"
-homepage = ""
 repository = "https://github.com/synlestidae/ethereum-tx-sign"
-documentation = ""
 license = "MIT"
 keywords = ["web3", "ethereum", "transaction", "sign"]
 authors = ["Mate Antunovic <mateATantunovic.nz>"]
