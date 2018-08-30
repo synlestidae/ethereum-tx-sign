@@ -1,0 +1,21 @@
+sudo: false
+language: rust
+branches:
+  only:
+  - master
+
+cache: cargo
+
+matrix:
+  fast_finish: false
+  include:
+  - rust: stable
+  - rust: beta
+  - rust: nightly
+
+before_script:
+  - rustup toolchain install stable
+
+script:
+  - cargo build
+  - cargo test
