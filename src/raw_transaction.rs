@@ -55,7 +55,11 @@ impl RawTransaction {
         s.append(&self.nonce);
         s.append(&self.gas_price);
         s.append(&self.gas);
-        s.append(&self.to.unwrap());
+        if let Some(ref t) = self.to {
+            s.append(t);
+        } else {
+            s.append(&vec![]);
+        }
         s.append(&self.value);
         s.append(&self.data);
     }
