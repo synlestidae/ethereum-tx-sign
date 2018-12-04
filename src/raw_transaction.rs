@@ -5,8 +5,6 @@ use secp256k1::key::SecretKey;
 use secp256k1::Message;
 use secp256k1::Secp256k1;
 
-const CHAIN_ID: u8 = 1;
-
 /// Description of a Transaction, pending or in the chain.
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
 pub struct RawTransaction {
@@ -27,9 +25,9 @@ pub struct RawTransaction {
 
 impl RawTransaction {
     /// Signs and returns the RLP-encoded transaction
-    pub fn sign(&self, private_key: &H256) -> Vec<u8> {
-        let hash = self.hash();
-        let sig = ecdsa_sign(&hash, &private_key.0);
+    pub fn sign(&self, private_key: &H256,CHAIN_ID : &u8) -> Vec<u8> {
+        let hash = self.hash(*CHAIN_ID);
+        let sig = ecdsa_sign(&hash, &private_key.0, &CHAIN_ID);
         let mut tx = RlpStream::new(); 
         tx.begin_unbounded_list();
         self.encode(&mut tx);
@@ -40,7 +38,7 @@ impl RawTransaction {
         tx.out()
     }
 
-    fn hash(&self) -> Vec<u8> {
+    fn hash(&self, CHAIN_ID: u8) -> Vec<u8> {
         let mut hash = RlpStream::new(); 
         hash.begin_unbounded_list();
         self.encode(&mut hash);
@@ -69,7 +67,7 @@ fn keccak256_hash(bytes: &[u8]) -> Vec<u8> {
     keccak256(bytes).into_iter().cloned().collect()
 }
 
-fn ecdsa_sign(hash: &[u8], private_key: &[u8]) -> EcdsaSig {
+fn ecdsa_sign(hash: &[u8], private_key: &[u8], CHAIN_ID: &u8) -> EcdsaSig {
     let s = Secp256k1::signing_only();
     let msg = Message::from_slice(hash).unwrap();
     let key = SecretKey::from_slice(&s, private_key).unwrap();
@@ -116,4 +114,3 @@ mod test {
         }
     }
 }
-
