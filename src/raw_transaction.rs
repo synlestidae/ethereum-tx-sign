@@ -86,7 +86,7 @@ pub struct EcdsaSig {
     s: Vec<u8>
 }
 
-#[test]
+#[cfg(test)]
 mod test {
     use std::io::Read;
     use std::fs::File;
@@ -103,7 +103,6 @@ mod test {
     fn test_signs_transaction_eth() {
         use std::io::Read;
         use std::fs::File;
-        use ethereum_types::*;
         use raw_transaction::RawTransaction;
         use serde_json;
 
