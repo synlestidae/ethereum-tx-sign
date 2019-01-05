@@ -86,7 +86,18 @@ pub struct EcdsaSig {
     s: Vec<u8>
 }
 
+#[test]
 mod test {
+    use std::io::Read;
+    use std::fs::File;
+    use ethereum_types::*;
+    use raw_transaction::RawTransaction;
+
+    #[derive(Deserialize)]
+    struct Signing {
+        signed: Vec<u8>,
+        private_key: H256 
+    }
 
     #[test]
     fn test_signs_transaction_eth() {
@@ -95,12 +106,6 @@ mod test {
         use ethereum_types::*;
         use raw_transaction::RawTransaction;
         use serde_json;
-
-        #[derive(Deserialize)]
-        struct Signing {
-            signed: Vec<u8>,
-            private_key: H256 
-        }
 
         let mut file = File::open("./test/test_txs.json").unwrap();
         let mut f_string = String::new();
@@ -114,17 +119,7 @@ mod test {
 
     #[test]
     fn test_signs_transaction_ropsten() {
-        use std::io::Read;
-        use std::fs::File;
-        use ethereum_types::*;
-        use raw_transaction::RawTransaction;
         use serde_json;
-
-        #[derive(Deserialize)]
-        struct Signing {
-            signed: Vec<u8>,
-            private_key: H256
-        } 
 
         let mut file = File::open("./test/test_txs_ropsten.json").unwrap();
         let mut f_string = String::new();
