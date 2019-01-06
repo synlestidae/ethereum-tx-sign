@@ -100,6 +100,10 @@ mod test {
     use std::fs::File;
     use ethereum_types::*;
     use raw_transaction::RawTransaction;
+    use serde::de::DeserializeOwned;
+    use serde_json;
+
+    const ETH_CHAIN_ID: u8 = 0;
 
     #[derive(Deserialize)]
     struct Signing {
@@ -109,11 +113,6 @@ mod test {
 
     #[test]
     fn test_signs_transaction_eth() {
-        use std::io::Read;
-        use std::fs::File;
-        use raw_transaction::RawTransaction;
-        use serde_json;
-
         let mut file = File::open("./test/test_txs.json").unwrap();
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
@@ -126,15 +125,30 @@ mod test {
 
     #[test]
     fn test_signs_transaction_ropsten() {
-        use serde_json;
+        let txs: Vec<(RawTransaction, Signing)> = load_obj("./test/test_txs_ropsten.json");
 
-        let mut file = File::open("./test/test_txs_ropsten.json").unwrap();
-        let mut f_string = String::new();
-        file.read_to_string(&mut f_string).unwrap();
-        let txs: Vec<(RawTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
         let chain_id = 3;
+
         for (tx, signed) in txs.into_iter() {
             assert_eq!(signed.signed, tx.sign(&signed.private_key, &chain_id));
         }
+    }
+
+    #[test]
+    fn test_signs_batch_eth() {
+        let txs: Vec<(RawTransaction, Signing)> = load_obj("./test/test_txs_batch.json");
+
+        for (tx, signed) in txs.into_iter() {
+            assert_eq!(signed.signed, tx.sign(&signed.private_key, &ETH_CHAIN_ID));
+        }
+    }
+
+    fn load_obj<T: DeserializeOwned>(path: &str) -> T {
+        let mut file = File::open(path).unwrap();
+        let mut f_string = String::new();
+
+        file.read_to_string(&mut f_string).unwrap();
+
+        serde_json::from_str(&f_string).unwrap()
     }
 }
