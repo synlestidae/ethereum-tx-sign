@@ -1,6 +1,6 @@
 [package]
 name = "ethereum-tx-sign"
-version = "0.0.1"
+version = "1.0.0"
 description = "Allows you to model a raw ethereum transaction and sign it with your private key"
 repository = "https://github.com/synlestidae/ethereum-tx-sign"
 license = "MIT"
