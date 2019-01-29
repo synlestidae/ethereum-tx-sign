@@ -25,9 +25,9 @@ pub struct RawTransaction {
 
 impl RawTransaction {
     /// Signs and returns the RLP-encoded transaction
-    pub fn sign(&self, private_key: &H256,chain_id : &u8) -> Vec<u8> {
-        let hash = self.hash(*chain_id);
-        let mut sig = ecdsa_sign(&hash, &private_key.0, &chain_id);
+    pub fn sign(&self, private_key: &H256, chain_id : u32) -> Vec<u8> {
+        let hash = self.hash(chain_id);
+        let mut sig = ecdsa_sign(&hash, &private_key.0, chain_id);
         let mut tx = RlpStream::new(); 
 
         while let Some(&0) = sig.r.first() {
@@ -46,11 +46,11 @@ impl RawTransaction {
         tx.out()
     }
 
-    fn hash(&self, chain_id: u8) -> Vec<u8> {
+    fn hash(&self, chain_id: u32) -> Vec<u8> {
         let mut hash = RlpStream::new(); 
         hash.begin_unbounded_list();
         self.encode(&mut hash);
-        hash.append(&mut vec![chain_id]);
+        hash.append(&chain_id);
         hash.append(&mut U256::zero());
         hash.append(&mut U256::zero());
         hash.complete_unbounded_list();
@@ -75,21 +75,21 @@ fn keccak256_hash(bytes: &[u8]) -> Vec<u8> {
     keccak256(bytes).into_iter().cloned().collect()
 }
 
-fn ecdsa_sign(hash: &[u8], private_key: &[u8], chain_id: &u8) -> EcdsaSig {
+fn ecdsa_sign(hash: &[u8], private_key: &[u8], chain_id: u32) -> EcdsaSig {
     let s = Secp256k1::signing_only();
     let msg = Message::from_slice(hash).unwrap();
     let key = SecretKey::from_slice(&s, private_key).unwrap();
     let (v, sig_bytes) = s.sign_recoverable(&msg, &key).serialize_compact(&s);
 
     EcdsaSig {
-        v: vec![v.to_i32() as u8 + chain_id * 2 + 35],
+        v: v.to_i32() as u32 + chain_id * 2 + 35,
         r: sig_bytes[0..32].to_vec(),
         s: sig_bytes[32..64].to_vec(),
     }
 }
 
 pub struct EcdsaSig {
-    v: Vec<u8>,
+    v: u32,//Vec<u8>,
     r: Vec<u8>,
     s: Vec<u8>
 }
@@ -103,7 +103,7 @@ mod test {
     use serde::de::DeserializeOwned;
     use serde_json;
 
-    const ETH_CHAIN_ID: u8 = 0;
+    const ETH_CHAIN_ID: u32 = 0;
 
     #[derive(Deserialize)]
     struct Signing {
@@ -119,7 +119,7 @@ mod test {
         let txs: Vec<(RawTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
         let chain_id = 0;
         for (tx, signed) in txs.into_iter() {
-            assert_eq!(signed.signed, tx.sign(&signed.private_key, &chain_id));
+            assert_eq!(signed.signed, tx.sign(&signed.private_key, chain_id));
         }
     }
 
@@ -130,7 +130,7 @@ mod test {
         let chain_id = 3;
 
         for (tx, signed) in txs.into_iter() {
-            assert_eq!(signed.signed, tx.sign(&signed.private_key, &chain_id));
+            assert_eq!(signed.signed, tx.sign(&signed.private_key, chain_id));
         }
     }
 
@@ -139,7 +139,7 @@ mod test {
         let txs: Vec<(RawTransaction, Signing)> = load_obj("./test/test_txs_batch.json");
 
         for (tx, signed) in txs.into_iter() {
-            assert_eq!(signed.signed, tx.sign(&signed.private_key, &ETH_CHAIN_ID));
+            assert_eq!(signed.signed, tx.sign(&signed.private_key, ETH_CHAIN_ID));
         }
     }
 
