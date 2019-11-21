@@ -25,7 +25,7 @@ pub struct RawTransaction {
 
 impl RawTransaction {
     /// Signs and returns the RLP-encoded transaction
-    pub fn sign(&self, private_key: &H256, chain_id: &u8) -> Vec<u8> {
+    pub fn sign(&self, private_key: &H256, chain_id: &u64) -> Vec<u8> {
         let hash = self.hash(*chain_id);
         let sig = ecdsa_sign(&hash, &private_key.0, &chain_id);
         let mut r_n = sig.r;		
@@ -42,18 +42,18 @@ impl RawTransaction {
         tx.append(&sig.v);
         tx.append(&r_n);
         tx.append(&s_n);
-        tx.complete_unbounded_list();
+        tx.finalize_unbounded_list();
         tx.out()
     }
 
-    fn hash(&self, chain_id: u8) -> Vec<u8> {
+    fn hash(&self, chain_id: u64) -> Vec<u8> {
         let mut hash = RlpStream::new();
         hash.begin_unbounded_list();
         self.encode(&mut hash);
-        hash.append(&mut vec![chain_id]);
+        hash.append(&mut chain_id.clone());
         hash.append(&mut U256::zero());
         hash.append(&mut U256::zero());
-        hash.complete_unbounded_list();
+        hash.finalize_unbounded_list();
         keccak256_hash(&hash.out())
     }
 
@@ -75,21 +75,21 @@ fn keccak256_hash(bytes: &[u8]) -> Vec<u8> {
     keccak256(bytes).into_iter().cloned().collect()
 }
 
-fn ecdsa_sign(hash: &[u8], private_key: &[u8], chain_id: &u8) -> EcdsaSig {
+fn ecdsa_sign(hash: &[u8], private_key: &[u8], chain_id: &u64) -> EcdsaSig {
     let s = Secp256k1::signing_only();
     let msg = Message::from_slice(hash).unwrap();
     let key = SecretKey::from_slice(private_key).unwrap();
     let (v, sig_bytes) = s.sign_recoverable(&msg, &key).serialize_compact();
 
     EcdsaSig {
-        v: vec![v.to_i32() as u8 + chain_id * 2 + 35],
+        v: v.to_i32() as u64 + chain_id * 2 + 35,
         r: sig_bytes[0..32].to_vec(),
         s: sig_bytes[32..64].to_vec(),
     }
 }
 
 pub struct EcdsaSig {
-    v: Vec<u8>,
+    v: u64,
     r: Vec<u8>,
     s: Vec<u8>,
 }
@@ -114,7 +114,7 @@ mod test {
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
         let txs: Vec<(RawTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
-        let chain_id = 0;
+        let chain_id = 1;
         for (tx, signed) in txs.into_iter() {
             assert_eq!(signed.signed, tx.sign(&signed.private_key, &chain_id));
         }
@@ -127,7 +127,6 @@ mod test {
         use serde_json;
         use std::fs::File;
         use std::io::Read;
-
         #[derive(Deserialize)]
         struct Signing {
             signed: Vec<u8>,
