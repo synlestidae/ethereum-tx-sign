@@ -28,7 +28,7 @@ impl RawTransaction {
 
         /// Signs and returns the RLP-encoded transaction
     pub fn sign<T: int::PrimInt>(&self, private_key: &H256, chain_id: &T) -> Vec<u8> {
-        let  chain_id_u64: u64 = chain_id.to_u64().unwrap();
+        let chain_id_u64: u64 = chain_id.to_u64().unwrap();
         let hash = self.hash(chain_id_u64);
         let sig = ecdsa_sign(&hash, &private_key.0, &chain_id_u64);
         let mut r_n = sig.r;		
