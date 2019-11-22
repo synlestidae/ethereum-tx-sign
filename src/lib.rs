@@ -7,6 +7,7 @@ extern crate rlp;
 extern crate secp256k1;
 extern crate serde_json;
 extern crate tiny_keccak;
+extern crate num_traits;
 
 mod raw_transaction;
 
