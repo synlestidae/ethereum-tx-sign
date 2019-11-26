@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.com/synlestidae/ethereum-tx-sign.svg?branch=master)](https://travis-ci.com/synlestidae/ethereum-tx-sign)
 
-Allows you to sign Ethereum transaction offline.
+Allows you to sign Ethereum transactions offline.
 
 ```
   const ETH_CHAIN_ID: u32 = 1;
