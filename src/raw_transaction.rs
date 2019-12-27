@@ -1,10 +1,19 @@
-use ethereum_types::{H160, H256, U256};
-use rlp::RlpStream;
+use ethereum_types::{
+    H160,
+    H256,
+    U256
+};
 use num_traits::int;
-use secp256k1::key::SecretKey;
-use secp256k1::Message;
-use secp256k1::Secp256k1;
-use tiny_keccak::keccak256;
+use rlp::RlpStream;
+use secp256k1::{
+    key::SecretKey,
+    Message,
+    Secp256k1,
+};
+use tiny_keccak::{
+    Keccak,
+    Hasher,
+};
 
 /// Description of a Transaction, pending or in the chain.
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
@@ -26,7 +35,7 @@ pub struct RawTransaction {
 
 impl RawTransaction {
 
-        /// Signs and returns the RLP-encoded transaction
+    /// Signs and returns the RLP-encoded transaction
     pub fn sign<T: int::PrimInt>(&self, private_key: &H256, chain_id: &T) -> Vec<u8> {
         let chain_id_u64: u64 = chain_id.to_u64().unwrap();
         let hash = self.hash(chain_id_u64);
@@ -75,7 +84,11 @@ impl RawTransaction {
 }
 
 fn keccak256_hash(bytes: &[u8]) -> Vec<u8> {
-    keccak256(bytes).iter().cloned().collect()
+    let mut hasher = Keccak::v256();
+    hasher.update(bytes);
+    let mut resp: [u8; 32] = Default::default();
+    hasher.finalize(&mut resp);
+    resp.iter().cloned().collect()
 }
 
 fn ecdsa_sign(hash: &[u8], private_key: &[u8], chain_id: &u64) -> EcdsaSig {
