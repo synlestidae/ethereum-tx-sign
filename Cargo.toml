@@ -1,6 +1,6 @@
 [package]
 name = "ethereum-tx-sign"
-version = "3.0.1"
+version = "3.0.2"
 description = "Allows you to model a raw ethereum transaction and sign it with your private key"
 repository = "https://github.com/synlestidae/ethereum-tx-sign"
 license = "MIT"
@@ -13,7 +13,7 @@ serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 tiny-keccak = { version = "2.0", features = ["keccak"] }
-secp256k1 = {version = "0.16", features = ["recovery"] }
+secp256k1 = {version = "0.17", features = ["recovery"] }
 rlp = "0.4"
-ethereum-types = "0.6"
+ethereum-types = "0.8"
 num-traits = "0.2"
