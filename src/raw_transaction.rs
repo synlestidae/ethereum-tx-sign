@@ -62,9 +62,9 @@ impl RawTransaction {
         let mut hash = RlpStream::new();
         hash.begin_unbounded_list();
         self.encode(&mut hash);
-        hash.append(&mut chain_id.clone());
-        hash.append(&mut U256::zero());
-        hash.append(&mut U256::zero());
+        hash.append(&chain_id.clone());
+        hash.append(&U256::zero());
+        hash.append(&U256::zero());
         hash.finalize_unbounded_list();
         keccak256_hash(&hash.out())
     }
