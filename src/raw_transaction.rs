@@ -1,19 +1,8 @@
-use ethereum_types::{
-    H160,
-    H256,
-    U256
-};
+use ethereum_types::{H160, H256, U256};
 use num_traits::int;
 use rlp::RlpStream;
-use secp256k1::{
-    key::SecretKey,
-    Message,
-    Secp256k1,
-};
-use tiny_keccak::{
-    Keccak,
-    Hasher,
-};
+use secp256k1::{key::SecretKey, Message, Secp256k1};
+use tiny_keccak::{Hasher, Keccak};
 
 /// Description of a Transaction, pending or in the chain.
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
@@ -34,19 +23,18 @@ pub struct RawTransaction {
 }
 
 impl RawTransaction {
-
     /// Signs and returns the RLP-encoded transaction
     pub fn sign<T: int::PrimInt>(&self, private_key: &H256, chain_id: &T) -> Vec<u8> {
         let chain_id_u64: u64 = chain_id.to_u64().unwrap();
         let hash = self.hash(chain_id_u64);
         let sig = ecdsa_sign(&hash, &private_key.0, &chain_id_u64);
-        let mut r_n = sig.r;		
-        let mut s_n = sig.s;		
-        while r_n[0] == 0 {		
-            r_n.remove(0);		
-        }		
-        while s_n[0] == 0 {		
-            s_n.remove(0);		
+        let mut r_n = sig.r;
+        let mut s_n = sig.s;
+        while r_n[0] == 0 {
+            r_n.remove(0);
+        }
+        while s_n[0] == 0 {
+            s_n.remove(0);
         }
         let mut tx = RlpStream::new();
         tx.begin_unbounded_list();
@@ -55,7 +43,7 @@ impl RawTransaction {
         tx.append(&r_n);
         tx.append(&s_n);
         tx.finalize_unbounded_list();
-        tx.out()
+        tx.out().to_vec()
     }
 
     fn hash(&self, chain_id: u64) -> Vec<u8> {
