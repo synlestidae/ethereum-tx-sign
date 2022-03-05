@@ -139,7 +139,7 @@ mod test {
         let txs: Vec<(RawTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
         let chain_id = 1 as u64;
         for (tx, signed) in txs.into_iter() {
-            assert_eq!(signed.signed, tx.sign(&signed.private_key, &chain_id));
+            assert_eq!(signed.signed, tx.sign(signed.private_key.as_ref(), &chain_id));
         }
     }
 
@@ -162,7 +162,7 @@ mod test {
         let txs: Vec<(RawTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
         let chain_id = 3 as i32;
         for (tx, signed) in txs.into_iter() {
-            assert_eq!(signed.signed, tx.sign(&signed.private_key, &chain_id));
+            assert_eq!(signed.signed, tx.sign(signed.private_key.as_ref(), &chain_id));
         }
     }
 }
