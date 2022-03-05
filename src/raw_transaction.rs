@@ -1,4 +1,4 @@
-use ethereum_types::{H160, H256, U256};
+use ethereum_types::{H160, U256};
 use num_traits::int;
 use rlp::RlpStream;
 use secp256k1::{key::SecretKey, Message, Secp256k1};
@@ -23,11 +23,30 @@ pub struct RawTransaction {
 }
 
 impl RawTransaction {
+    /// Creates a new transaction struct
+    pub fn new(
+        nonce: u128,
+        to: Vec<u8>,
+        value: u128,
+        gas_price: u128,
+        gas_limit: u128,
+        data: Vec<u8>
+    ) -> Self {
+        RawTransaction {
+            nonce: U256::from(nonce),
+            to: Some(H160::from_slice(&to)),
+            value: U256::from(value),
+            gas_price: U256::from(gas_price),
+            gas: U256::from(gas_limit),
+            data
+        }
+    }
+
     /// Signs and returns the RLP-encoded transaction
-    pub fn sign<T: int::PrimInt>(&self, private_key: &H256, chain_id: &T) -> Vec<u8> {
+    pub fn sign<T: int::PrimInt>(&self, private_key: &[u8], chain_id: &T) -> Vec<u8> {
         let chain_id_u64: u64 = chain_id.to_u64().unwrap();
         let hash = self.hash(chain_id_u64);
-        let sig = ecdsa_sign(&hash, &private_key.0, &chain_id_u64);
+        let sig = ecdsa_sign(&hash, private_key, &chain_id_u64);
         let mut r_n = sig.r;
         let mut s_n = sig.s;
         while r_n[0] == 0 {
