@@ -1,4 +1,4 @@
-use ethereum_types::{H160, U256};
+//use ethereum_types::{H160, U256};
 use num_traits::int;
 use rlp::RlpStream;
 use secp256k1::{key::SecretKey, Message, Secp256k1};
@@ -8,16 +8,16 @@ use tiny_keccak::{Hasher, Keccak};
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
 pub struct RawTransaction {
     /// Nonce
-    pub nonce: U256,
+    pub nonce: u128,
     /// Recipient (None when contract creation)
-    pub to: Option<H160>,
+    pub to: Option<[u8; 20]>,
     /// Transfered value
-    pub value: U256,
+    pub value: u128,
     /// Gas Price
     #[serde(rename = "gasPrice")]
-    pub gas_price: U256,
+    pub gas_price: u128,
     /// Gas amount
-    pub gas: U256,
+    pub gas: u128,
     /// Input data
     pub data: Vec<u8>,
 }
@@ -26,18 +26,18 @@ impl RawTransaction {
     /// Creates a new transaction struct
     pub fn new(
         nonce: u128,
-        to: Vec<u8>,
+        to: [u8; 20],
         value: u128,
         gas_price: u128,
         gas_limit: u128,
         data: Vec<u8>
     ) -> Self {
         RawTransaction {
-            nonce: U256::from(nonce),
-            to: Some(H160::from_slice(&to)),
-            value: U256::from(value),
-            gas_price: U256::from(gas_price),
-            gas: U256::from(gas_limit),
+            nonce,
+            to: Some(to),
+            value,
+            gas_price,
+            gas: gas_limit,
             data
         }
     }
@@ -70,8 +70,9 @@ impl RawTransaction {
         hash.begin_unbounded_list();
         self.encode(&mut hash);
         hash.append(&chain_id.clone());
-        hash.append(&U256::zero());
-        hash.append(&U256::zero());
+        let u256_zero: &[u8] = &[0u8; 32];
+        hash.append(&u256_zero);//hash.append(&U256::zero());
+        hash.append(&u256_zero);//hash.append(&U256::zero());
         hash.finalize_unbounded_list();
         keccak256_hash(&hash.out())
     }
@@ -81,7 +82,8 @@ impl RawTransaction {
         s.append(&self.gas_price);
         s.append(&self.gas);
         if let Some(ref t) = self.to {
-            s.append(t);
+            let to: Vec<u8> = t.iter().cloned().collect();
+            s.append(&to);
         } else {
             s.append(&vec![]);
         }
@@ -117,11 +119,12 @@ pub struct EcdsaSig {
     s: Vec<u8>,
 }
 
+#[cfg(test)]
 mod test {
+    use ethereum_types::H256;
 
     #[test]
     fn test_signs_transaction_eth() {
-        use ethereum_types::*;
         use raw_transaction::RawTransaction;
         use serde_json;
         use std::fs::File;
@@ -145,7 +148,6 @@ mod test {
 
     #[test]
     fn test_signs_transaction_ropsten() {
-        use ethereum_types::*;
         use raw_transaction::RawTransaction;
         use serde_json;
         use std::fs::File;
