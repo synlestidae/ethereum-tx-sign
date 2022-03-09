@@ -1,6 +1,6 @@
 use num_traits::int;
 use rlp::RlpStream;
-use secp256k1::{key::SecretKey, Message, Secp256k1};
+use secp256k1::{SecretKey, Message, Secp256k1};
 use tiny_keccak::{Hasher, Keccak};
 
 /// Description of a Transaction, pending or in the chain.
@@ -102,7 +102,7 @@ fn ecdsa_sign(hash: &[u8], private_key: &[u8], chain_id: &u64) -> EcdsaSig {
     let s = Secp256k1::signing_only();
     let msg = Message::from_slice(hash).unwrap();
     let key = SecretKey::from_slice(private_key).unwrap();
-    let (v, sig_bytes) = s.sign_recoverable(&msg, &key).serialize_compact();
+    let (v, sig_bytes) = s.sign_ecdsa_recoverable(&msg, &key).serialize_compact();
 
     EcdsaSig {
         v: v.to_i32() as u64 + chain_id * 2 + 35,
