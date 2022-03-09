@@ -4,12 +4,13 @@ extern crate serde;
 extern crate serde_derive;
 extern crate rlp;
 extern crate secp256k1;
-extern crate serde_json;
 extern crate tiny_keccak;
 extern crate num_traits;
 
 #[cfg(test)]
 extern crate ethereum_types;
+#[cfg(test)]
+extern crate serde_json;
 
 mod raw_transaction;
 
