@@ -120,78 +120,33 @@ pub struct EcdsaSig {
 
 #[cfg(test)]
 mod test {
-    use ethereum_types::*;
     use raw_transaction::RawTransaction;
-
-    #[derive(Debug, Default, Clone, Deserialize)]
-    pub struct TestTransaction {
-        pub nonce: U256,
-        pub to: Option<H160>,
-        pub value: U256,
-        #[serde(rename = "gasPrice")]
-        pub gas_price: U256,
-        pub gas: U256,
-        pub data: Vec<u8>,
-    }
-
-    impl Into<RawTransaction> for TestTransaction {
-        fn into(self) -> RawTransaction {
-            RawTransaction {
-                nonce: self.nonce.as_u128(),
-                to: self.to.map(|t| {
-                    let mut to = [0u8; 20];
-                    for (i, b) in t.as_bytes().iter().enumerate() {
-                        to[i] = *b;
-                    }
-                    to
-                }),
-                value: self.value.as_u128(),
-                gas_price: self.gas_price.as_u128(),
-                gas: self.gas.as_u128(),
-                data: self.data
-            }
-        }
-    }
+    use serde_json;
+    use std::fs::File;
+    use std::io::Read;
+    use ethereum_types::H256;
 
     #[test]
     fn test_signs_transaction_eth() {
-        use serde_json;
-        use std::fs::File;
-        use std::io::Read;
-
-        #[derive(Deserialize)]
-        struct Signing {
-            signed: Vec<u8>,
-            private_key: H256,
-        }
-
-        let mut file = File::open("./test/test_txs.json").unwrap();
-        let mut f_string = String::new();
-        file.read_to_string(&mut f_string).unwrap();
-        let txs: Vec<(TestTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
-        let chain_id = 1 as u64;
-        for (tx, signed) in txs.into_iter() {
-            let rtx: RawTransaction = tx.into();
-            assert_eq!(signed.signed, rtx.sign(signed.private_key.as_ref(), &chain_id));
-        }
+        run_test("./test/test_txs.json", 1);
     }
 
     #[test]
     fn test_signs_transaction_ropsten() {
-        use serde_json;
-        use std::fs::File;
-        use std::io::Read;
-        #[derive(Deserialize)]
-        struct Signing {
-            signed: Vec<u8>,
-            private_key: H256,
-        }
+        run_test("./test/test_txs_ropsten.json", 3);
+    }
 
-        let mut file = File::open("./test/test_txs_ropsten.json").unwrap();
+    #[derive(Serialize, Deserialize, Clone)]
+    struct Signing {
+        signed: Vec<u8>,
+        private_key: H256,
+    }
+
+    fn run_test(path: &str, chain_id: i32) {
+        let mut file = File::open(path).unwrap();
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
-        let txs: Vec<(TestTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
-        let chain_id = 3 as i32;
+        let txs: Vec<(RawTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
         for (tx, signed) in txs.into_iter() {
             let rtx: RawTransaction = tx.into();
             assert_eq!(signed.signed, rtx.sign(signed.private_key.as_ref(), &chain_id));
