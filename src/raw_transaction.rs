@@ -1,4 +1,3 @@
-//use ethereum_types::{H160, U256};
 use num_traits::int;
 use rlp::RlpStream;
 use secp256k1::{key::SecretKey, Message, Secp256k1};
