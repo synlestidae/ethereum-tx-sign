@@ -70,9 +70,8 @@ impl RawTransaction {
         hash.begin_unbounded_list();
         self.encode(&mut hash);
         hash.append(&chain_id.clone());
-        let u256_zero: &[u8] = &[0u8; 32];
-        hash.append(&u256_zero);//hash.append(&U256::zero());
-        hash.append(&u256_zero);//hash.append(&U256::zero());
+        hash.append_raw(&[0x80], 1);
+        hash.append_raw(&[0x80], 1);
         hash.finalize_unbounded_list();
         keccak256_hash(&hash.out())
     }
@@ -179,7 +178,6 @@ mod test {
 
     #[test]
     fn test_signs_transaction_ropsten() {
-        use raw_transaction::RawTransaction;
         use serde_json;
         use std::fs::File;
         use std::io::Read;
@@ -192,10 +190,11 @@ mod test {
         let mut file = File::open("./test/test_txs_ropsten.json").unwrap();
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
-        let txs: Vec<(RawTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
+        let txs: Vec<(TestTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
         let chain_id = 3 as i32;
         for (tx, signed) in txs.into_iter() {
-            assert_eq!(signed.signed, tx.sign(signed.private_key.as_ref(), &chain_id));
+            let rtx: RawTransaction = tx.into();
+            assert_eq!(signed.signed, rtx.sign(signed.private_key.as_ref(), &chain_id));
         }
     }
 }
