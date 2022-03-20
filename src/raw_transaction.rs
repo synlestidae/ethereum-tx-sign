@@ -3,6 +3,43 @@ use rlp::RlpStream;
 use secp256k1::{SecretKey, Message, Secp256k1};
 use tiny_keccak::{Hasher, Keccak};
 
+pub struct Transaction {
+    txn_type: u8,
+    txn_payload: TransactionType,
+}
+
+impl Transaction {
+    pub fn sign(&self, private_key: &[u8]) -> Vec<u8> {
+        // signs and returns the encoded txn
+    }
+}
+
+pub enum Transaction {
+    FeeMarketEIP1559Txn(EIP1559Txn),
+    AccessListEIP2930Txn(EIP2930Txn),
+    // aka, LegacyTxn
+    RawTransaction(RawTransaction),
+}
+
+struct EIP1559Txn {
+    chain_id: u8,
+    nonce: u128,
+    max_priority_fee_per_gas: u128,
+    max_fee_per_gas: u128,
+    gas_limit: u128,
+    destination: [u8; 20],
+    amount: u128,
+    data: Vec<u8>,
+    access_list: Vec<u8>,
+    signature_y_parity: bool,
+    signature_r: u128,
+    signature_s: u128,
+}
+
+struct EIP2930Txn {
+
+}
+
 /// Description of a Transaction, pending or in the chain.
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
 pub struct RawTransaction {
@@ -124,6 +161,12 @@ mod test {
     use std::fs::File;
     use std::io::Read;
     use ethereum_types::H256;
+
+    #[test]
+    fn test_eip2718() {
+        let txn = Transaction::FeeMarketEIP1559(EIP1559Txn::new(...));
+        let bytes = txn.sign(secret_key);
+    }
 
     #[test]
     fn test_signs_transaction_eth() {
