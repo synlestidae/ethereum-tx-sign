@@ -1,7 +1,7 @@
 use num_traits::int;
 use rlp::RlpStream;
 use tiny_keccak::{Hasher, Keccak};
-use crate::ecdsa_sign;
+use crate::EcdsaSig;
 
 /// Description of a Transaction, pending or in the chain.
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
@@ -45,7 +45,7 @@ impl RawTransaction {
     pub fn sign<T: int::PrimInt>(&self, private_key: &[u8], chain_id: &T) -> Vec<u8> {
         let chain_id_u64: u64 = chain_id.to_u64().unwrap();
         let hash = self.hash(chain_id_u64);
-        let sig = ecdsa_sign(&hash, private_key, &chain_id_u64);
+        let sig = EcdsaSig::generate(&hash, private_key, &chain_id_u64);
         let mut r_n = sig.r;
         let mut s_n = sig.s;
         while r_n[0] == 0 {

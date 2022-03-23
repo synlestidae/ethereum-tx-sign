@@ -22,7 +22,7 @@ pub use self::raw_transaction::RawTransaction;
 pub trait Transaction {
     fn transaction_type(&self) -> u8;
     fn chain_id(&self) -> u64;
-    fn data(&self) -> RlpStream;
+    fn rlp(&self) -> RlpStream;
 
     fn signature(&self) -> EcdsaSig {
         // take the RlpStream from data()
@@ -35,7 +35,7 @@ pub trait Transaction {
         // get the signature()
         // take the RlpStream from data()
         // append v, r, s
-        let _sig = ecdsa_sign(&self.data().as_raw(), private_key, &self.chain_id());
+        let _sig = EcdsaSig::generate(&self.rlp().as_raw(), private_key, &self.chain_id());
         
         unimplemented!()
     }
@@ -47,15 +47,19 @@ pub struct EcdsaSig {
     s: Vec<u8>,
 }
 
-pub fn ecdsa_sign(hash: &[u8], private_key: &[u8], chain_id: &u64) -> EcdsaSig {
-    let s = Secp256k1::signing_only();
-    let msg = Message::from_slice(hash).unwrap();
-    let key = SecretKey::from_slice(private_key).unwrap();
-    let (v, sig_bytes) = s.sign_ecdsa_recoverable(&msg, &key).serialize_compact();
+impl EcdsaSig {
+    pub fn generate(hash: &[u8], private_key: &[u8], chain_id: &u64) -> EcdsaSig {
+        let s = Secp256k1::signing_only();
+        let msg = Message::from_slice(hash).unwrap();
+        let key = SecretKey::from_slice(private_key).unwrap();
+        let (v, sig_bytes) = s.sign_ecdsa_recoverable(&msg, &key).serialize_compact();
 
-    EcdsaSig {
-        v: v.to_i32() as u64 + chain_id * 2 + 35,
-        r: sig_bytes[0..32].to_vec(),
-        s: sig_bytes[32..64].to_vec(),
+        EcdsaSig {
+            v: v.to_i32() as u64 + chain_id * 2 + 35,
+            r: sig_bytes[0..32].to_vec(),
+            s: sig_bytes[32..64].to_vec(),
+        }
     }
 }
+
+
