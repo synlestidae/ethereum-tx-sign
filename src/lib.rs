@@ -16,7 +16,6 @@ use secp256k1::{SecretKey, Message, Secp256k1};
 use rlp::RlpStream;
 
 mod raw_transaction;
-
 pub use self::raw_transaction::RawTransaction;
 
 pub trait Transaction {
@@ -24,21 +23,37 @@ pub trait Transaction {
     fn chain_id(&self) -> u64;
     fn rlp(&self) -> RlpStream;
 
-    fn signature(&self) -> EcdsaSig {
+    fn ecdsa(&self, _private_key: &[u8]) -> EcdsaSig {
         // take the RlpStream from data()
         // compute the hash
         // return ecdsa_sign of hash
         unimplemented!()
     }
 
-    fn sign(&self, private_key: &[u8]) -> Vec<u8> {
-        // get the signature()
-        // take the RlpStream from data()
-        // append v, r, s
-        let _sig = EcdsaSig::generate(&self.rlp().as_raw(), private_key, &self.chain_id());
-        
-        unimplemented!()
+    fn sign(&self, private_key: &[u8]) -> Result<Vec<u8>, SigError> {
+        let mut rlp = self.rlp();
+
+        if rlp.is_finished() {
+            return Err(SigError::RlpStreamEnd);
+        }
+
+        match self.ecdsa(private_key) {
+            EcdsaSig { v, s, r} => {
+                rlp.append(&v); 
+                rlp.append(&s); 
+                rlp.append(&r); 
+            }
+        }
+
+        rlp.finalize_unbounded_list();
+
+        return Ok(rlp.out().to_vec())
     }
+}
+
+pub enum SigError {
+    /// If rlp().is_finished() is true, sign() will return this error.
+    RlpStreamEnd
 }
 
 pub struct EcdsaSig {
