@@ -20,15 +20,27 @@ mod raw_transaction;
 pub use self::raw_transaction::RawTransaction;
 
 pub trait Transaction {
-    fn transaction_type(&self) -> u8;
     fn chain_id(&self) -> u64;
     fn rlp(&self) -> &[&dyn Encodable];
 
-    fn ecdsa(&self, _private_key: &[u8]) -> EcdsaSig {
-        // take the RlpStream from data()
-        // compute the hash
-        // return ecdsa_sign of hash
-        unimplemented!()
+    fn hash(&self) -> Vec<u8> {
+        let mut hash = RlpStream::new();
+        hash.begin_unbounded_list();
+        for e in self.rlp().iter() {
+            hash.endcode(e);
+        }
+        hash.append(&chain_id.clone());
+        hash.append_raw(&[0x80], 1);
+        hash.append_raw(&[0x80], 1);
+        hash.finalize_unbounded_list();
+        keccak256_hash(&hash.out())
+    }
+
+    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
+        let chain_id = self.chain_id();
+        let hash = self.hash();
+
+        EcdsaSig::generate(&hash, private_key, &chain_id_u64)
     }
 
     fn sign(&self, private_key: &[u8]) -> Result<Vec<u8>, SigError> {
@@ -51,6 +63,10 @@ pub trait Transaction {
 
         return Ok(rlp_stream.out().to_vec())
     }
+}
+
+pub trait TypedTransaction {
+    fn transaction_type(&self) -> u8;
 }
 
 pub enum SigError {
@@ -77,6 +93,14 @@ impl EcdsaSig {
             s: sig_bytes[32..64].to_vec(),
         }
     }
+}
+
+pub fn keccak256_hash(bytes: &[u8]) -> Vec<u8> {
+    let mut hasher = Keccak::v256();
+    hasher.update(bytes);
+    let mut resp: [u8; 32] = Default::default();
+    hasher.finalize(&mut resp);
+    resp.iter().cloned().collect()
 }
 
 

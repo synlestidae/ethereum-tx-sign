@@ -1,7 +1,7 @@
 use num_traits::int;
 use rlp::RlpStream;
 use tiny_keccak::{Hasher, Keccak};
-use crate::EcdsaSig;
+use crate::{keccak256_hash, EcdsaSig};
 
 /// Description of a Transaction, pending or in the chain.
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
@@ -88,14 +88,6 @@ impl RawTransaction {
         s.append(&self.value);
         s.append(&self.data);
     }
-}
-
-fn keccak256_hash(bytes: &[u8]) -> Vec<u8> {
-    let mut hasher = Keccak::v256();
-    hasher.update(bytes);
-    let mut resp: [u8; 32] = Default::default();
-    hasher.finalize(&mut resp);
-    resp.iter().cloned().collect()
 }
 
 
