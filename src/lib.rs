@@ -14,6 +14,7 @@ extern crate serde_json;
 
 use secp256k1::{SecretKey, Message, Secp256k1};
 use rlp::RlpStream;
+use rlp::Encodable;
 
 mod raw_transaction;
 pub use self::raw_transaction::RawTransaction;
@@ -21,7 +22,7 @@ pub use self::raw_transaction::RawTransaction;
 pub trait Transaction {
     fn transaction_type(&self) -> u8;
     fn chain_id(&self) -> u64;
-    fn rlp(&self) -> RlpStream;
+    fn rlp(&self) -> &[&dyn Encodable];
 
     fn ecdsa(&self, _private_key: &[u8]) -> EcdsaSig {
         // take the RlpStream from data()
@@ -31,23 +32,24 @@ pub trait Transaction {
     }
 
     fn sign(&self, private_key: &[u8]) -> Result<Vec<u8>, SigError> {
-        let mut rlp = self.rlp();
+        let mut rlp_stream = RlpStream::new();
+        rlp_stream.begin_unbounded_list();
 
-        if rlp.is_finished() {
-            return Err(SigError::RlpStreamEnd);
+        for e in self.rlp().iter() {
+            e.rlp_append(&mut rlp_stream);
         }
 
         match self.ecdsa(private_key) {
             EcdsaSig { v, s, r} => {
-                rlp.append(&v); 
-                rlp.append(&s); 
-                rlp.append(&r); 
+                rlp_stream.append(&v); 
+                rlp_stream.append(&s); 
+                rlp_stream.append(&r); 
             }
         }
 
-        rlp.finalize_unbounded_list();
+        rlp_stream.finalize_unbounded_list();
 
-        return Ok(rlp.out().to_vec())
+        return Ok(rlp_stream.out().to_vec())
     }
 }
 
