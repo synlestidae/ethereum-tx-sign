@@ -3,25 +3,18 @@ use rlp::RlpStream;
 use secp256k1::{SecretKey, Message, Secp256k1};
 use tiny_keccak::{Hasher, Keccak};
 
-pub struct Transaction {
+pub struct EIP2718TxnEnvelope {
     txn_type: u8,
     txn_payload: TransactionType,
 }
 
-impl Transaction {
-    pub fn sign(&self, private_key: &[u8]) -> Vec<u8> {
-        // signs and returns the encoded txn
-    }
-}
+//pub enum Transaction {
+//    FeeMarketEIP1559Txn(EIP1559Txn),
+//    AccessListEIP2930Txn(EIP2930Txn),
+//    RawTransaction(RawTransaction),
+//}
 
-pub enum Transaction {
-    FeeMarketEIP1559Txn(EIP1559Txn),
-    AccessListEIP2930Txn(EIP2930Txn),
-    // aka, LegacyTxn
-    RawTransaction(RawTransaction),
-}
-
-struct EIP1559Txn {
+pub struct EIP1559RawTxn {
     chain_id: u8,
     nonce: u128,
     max_priority_fee_per_gas: u128,
@@ -31,18 +24,48 @@ struct EIP1559Txn {
     amount: u128,
     data: Vec<u8>,
     access_list: Vec<u8>,
+    // may take these off since they only apply after the transaction is signed
+    // not part of the raw transaction payload
     signature_y_parity: bool,
     signature_r: u128,
     signature_s: u128,
 }
 
-struct EIP2930Txn {
+impl Transaction for EIP1559Txn {
+    fn transaction_type(&self) -> u8 { 0x02 }
+    
+    fn chain_id(&self) -> u64 { self.chain_id }
 
+    fn rlp(&self) -> RlpStream {
+        //TODO
+    }
 }
 
-/// Description of a Transaction, pending or in the chain.
+pub struct EIP2930RawTxn {
+    chain_id: u8,
+    nonce: u128,
+    gasPrice: u128,
+    gasLimit: u128,
+    to: [u8; 20],
+    value: u128,
+    data: Vec<u8>,
+    accessList: Vec<u8>,
+    signatureYParity: u8,
+}
+
+impl Transaction for EIP2930Txn {
+    fn transaction_type(&self) -> u8 { 0x01 }
+
+    fn chain_id(&self) -> u64 { self.chain_id }
+
+    fn rlp(&self) -> RlpStream {
+        //TODO
+    }
+}
+
+/// Description of a Legacy Transaction
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
-pub struct RawTransaction {
+pub struct LegacyRawTxn {
     /// Nonce
     pub nonce: u128,
     /// Recipient (None when contract creation)
@@ -58,7 +81,7 @@ pub struct RawTransaction {
     pub data: Vec<u8>,
 }
 
-impl RawTransaction {
+impl LegacyRawTxn {
     /// Creates a new transaction struct
     pub fn new(
         nonce: u128,
@@ -68,7 +91,7 @@ impl RawTransaction {
         gas_limit: u128,
         data: Vec<u8>
     ) -> Self {
-        RawTransaction {
+        LegacyRawTxn {
             nonce,
             to: Some(to),
             value,
@@ -164,7 +187,10 @@ mod test {
 
     #[test]
     fn test_eip2718() {
-        let txn = Transaction::FeeMarketEIP1559(EIP1559Txn::new(...));
+        //let txn = Transaction::FeeMarketEIP1559(EIP1559Txn::new(...));
+        let txn = EIP1559Txn::new(...);
+        let txn2 = EIP2930Txn::new(...);
+        let txn_3 = LegacyTxn::new(...);
         let bytes = txn.sign(secret_key);
     }
 
