@@ -16,11 +16,26 @@ use rlp::RlpStream;
 use secp256k1::{Message, Secp256k1, SecretKey};
 use tiny_keccak::{Hasher, Keccak};
 
+/// Ethereum transaction
 pub trait Transaction {
+    /// [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) chain ID
     fn chain(&self) -> u64;
+
+    /// Compute the unique transaction hash
     fn hash(&self) -> [u8; 32];
+    
+    /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction
     fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig;
+
+    /// Sign and encode this transaction using the given private key
     fn sign(&self, private_key: &[u8]) -> Vec<u8>;
+}
+
+/// EIP-2817 Typed Transaction Envelope
+pub trait TypedTransaction: Transaction {
+
+    /// Returns the transaction type byte
+    fn transaction_type(&self) -> u8;
 }
 
 /// Description of a Transaction, pending or in the chain.
