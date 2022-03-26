@@ -16,9 +16,6 @@ use secp256k1::{SecretKey, Message, Secp256k1};
 use tiny_keccak::{Keccak, Hasher};
 use rlp::RlpStream;
 
-//mod raw_transaction;
-//pub use self::raw_transaction::RawTransaction;
-
 pub trait Transaction {
     fn chain(&self) -> u64;
     fn hash(&self) -> [u8; 32];
@@ -48,7 +45,17 @@ pub struct LegacyTransaction {
 
 impl LegacyTransaction {
     fn rlp(&self) -> RlpStream {
-        unimplemented!()
+        let mut rlp = RlpStream::new();
+        let to: &[u8] = &self.to.unwrap();
+        rlp.begin_unbounded_list();
+        rlp.append(&self.nonce);
+        rlp.append(&self.gas_price);
+        rlp.append(&self.gas);
+        rlp.append(&to);
+        rlp.append(&self.value);
+        rlp.append(&self.data);
+        // the list is deliberately left incomplete
+        rlp
     }
 }
 
@@ -59,10 +66,6 @@ impl Transaction for LegacyTransaction {
 
     fn hash(&self) -> [u8; 32] {
         let mut hash = self.rlp();
-        //hash.begin_unbounded_list();
-        //for e in self.rlp().iter() {
-        //    hash.append(e);
-        //}
         hash.append(&self.chain());
         hash.append_raw(&[0x80], 1);
         hash.append_raw(&[0x80], 1);
@@ -120,4 +123,40 @@ pub fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
     let mut resp: [u8; 32] = Default::default();
     hasher.finalize(&mut resp);
     resp
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{Transaction, LegacyTransaction};
+    use serde_json;
+    use std::fs::File;
+    use std::io::Read;
+    use ethereum_types::H256;
+
+    #[test]
+    fn test_signs_transaction_eth() {
+        run_test("./test/test_txs.json");
+    }
+
+    #[test]
+    fn test_signs_transaction_ropsten() {
+        //run_test("./test/test_txs_ropsten.json", 3);
+    }
+
+    #[derive(Serialize, Deserialize, Clone)]
+    struct Signing {
+        signed: Vec<u8>,
+        private_key: H256,
+    }
+
+    fn run_test(path: &str) {
+        let mut file = File::open(path).unwrap();
+        let mut f_string = String::new();
+        file.read_to_string(&mut f_string).unwrap();
+        let txs: Vec<(LegacyTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
+        for (tx, signed) in txs.into_iter() {
+            let rtx: LegacyTransaction = tx.into();
+            assert_eq!(signed.signed, rtx.encode(signed.private_key.as_ref()));
+        }
+    }
 }
