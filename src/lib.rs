@@ -2,19 +2,19 @@
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate num_traits;
 extern crate rlp;
 extern crate secp256k1;
 extern crate tiny_keccak;
-extern crate num_traits;
 
 #[cfg(test)]
 extern crate ethereum_types;
 #[cfg(test)]
 extern crate serde_json;
 
-use secp256k1::{SecretKey, Message, Secp256k1};
-use tiny_keccak::{Keccak, Hasher};
 use rlp::RlpStream;
+use secp256k1::{Message, Secp256k1, SecretKey};
+use tiny_keccak::{Hasher, Keccak};
 
 pub trait Transaction {
     fn chain(&self) -> u64;
@@ -46,7 +46,10 @@ pub struct LegacyTransaction {
 impl LegacyTransaction {
     fn rlp(&self) -> RlpStream {
         let mut rlp = RlpStream::new();
-        let to: &[u8] = &self.to.unwrap();
+        let to: &[u8] = &match self.to {
+            Some(ref to) => to.as_ref(),
+            None => &[0; 0],
+        };
         rlp.begin_unbounded_list();
         rlp.append(&self.nonce);
         rlp.append(&self.gas_price);
@@ -77,16 +80,16 @@ impl Transaction for LegacyTransaction {
         let mut rlp_stream = self.rlp();
 
         match self.ecdsa(private_key) {
-            EcdsaSig { v, s, r} => {
-                rlp_stream.append(&v); 
-                rlp_stream.append(&s); 
-                rlp_stream.append(&r); 
+            EcdsaSig { v, s, r } => {
+                rlp_stream.append(&v);
+                rlp_stream.append(&r);
+                rlp_stream.append(&s);
             }
         }
 
         rlp_stream.finalize_unbounded_list();
 
-        return rlp_stream.out().to_vec()
+        return rlp_stream.out().to_vec();
     }
 
     fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
@@ -127,11 +130,11 @@ pub fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 mod test {
-    use crate::{Transaction, LegacyTransaction};
+    use crate::{LegacyTransaction, Transaction};
+    use ethereum_types::H256;
     use serde_json;
     use std::fs::File;
     use std::io::Read;
-    use ethereum_types::H256;
 
     #[test]
     fn test_signs_transaction_eth() {
