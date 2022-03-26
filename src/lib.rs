@@ -143,7 +143,7 @@ mod test {
 
     #[test]
     fn test_signs_transaction_ropsten() {
-        //run_test("./test/test_txs_ropsten.json", 3);
+        run_test("./test/test_txs_ropsten.json");
     }
 
     #[derive(Serialize, Deserialize, Clone)]
