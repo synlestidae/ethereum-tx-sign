@@ -19,8 +19,8 @@ use tiny_keccak::{Hasher, Keccak};
 pub trait Transaction {
     fn chain(&self) -> u64;
     fn hash(&self) -> [u8; 32];
-    fn encode(&self, private_key: &[u8]) -> Vec<u8>;
     fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig;
+    fn sign(&self, private_key: &[u8]) -> Vec<u8>;
 }
 
 /// Description of a Transaction, pending or in the chain.
@@ -76,7 +76,7 @@ impl Transaction for LegacyTransaction {
         keccak256_hash(&hash.out())
     }
 
-    fn encode(&self, private_key: &[u8]) -> Vec<u8> {
+    fn sign(&self, private_key: &[u8]) -> Vec<u8> {
         let mut rlp_stream = self.rlp();
 
         match self.ecdsa(private_key) {
@@ -159,7 +159,7 @@ mod test {
         let txs: Vec<(LegacyTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
         for (tx, signed) in txs.into_iter() {
             let rtx: LegacyTransaction = tx.into();
-            assert_eq!(signed.signed, rtx.encode(signed.private_key.as_ref()));
+            assert_eq!(signed.signed, rtx.sign(signed.private_key.as_ref()));
         }
     }
 }
