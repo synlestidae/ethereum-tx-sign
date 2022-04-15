@@ -114,6 +114,33 @@ impl Transaction for LegacyTransaction {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+pub struct Access {
+    pub address: [u8; 20],
+    pub storage_keys: Vec<[u8; 32]>
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+pub struct AccessListTransaction {
+    /// Chain ID
+    pub chain: u64,
+    /// Nonce
+    pub nonce: u128,
+    #[serde(rename = "gasPrice")]
+    pub gas_price: u128,
+    /// Gas amount
+    pub gas: u128,
+    /// Recipient (None when contract creation)
+    pub to: Option<[u8; 20]>,
+    /// Transfered value
+    pub value: u128,
+    /// Gas Price
+    /// Input data
+    pub data: Vec<u8>,
+
+    pub access_list: Vec<Access>
+}
+
 pub struct EcdsaSig {
     v: u64,
     r: Vec<u8>,
