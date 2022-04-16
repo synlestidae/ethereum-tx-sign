@@ -55,10 +55,39 @@ pub trait Transaction {
     fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>>;
 }
 
-/// EIP-2817 Typed Transaction Envelope
+/// EIP-2718 Typed Transaction Envelope
 pub trait TypedTransaction: Transaction {
     /// Returns the transaction type byte
     fn transaction_type(&self) -> u8;
+}
+
+pub struct FeeMarketTransaction {
+    /// Chain ID
+    pub chain: u64,
+    pub nonce: u128,
+    pub max_priority_fee_per_gas: u128,
+    pub max_fee_per_gas: u128,
+    pub gas_limit: u128,
+    /// Destination address
+    pub destination: Option<[u8; 20]>,
+    pub amount: u128,
+    pub data: Vec<u8>,
+    // TODO: update access list to proper value
+    pub access_list: Vec<u8>,
+}
+
+impl Transaction for FeeMarketTransaction {
+    fn chain(&self) -> u64 {
+        self.chain
+    }
+
+    fn hash(&self) -> [u8; 32] {
+        unimplemented!()
+    }
+}
+
+impl TypedTransaction for FeeMarketTransaction {
+    fn transaction_type(&self) -> u8 { 2 }
 }
 
 /// Description of a Transaction, pending or in the chain.
