@@ -11,6 +11,8 @@ extern crate tiny_keccak;
 extern crate ethereum_types;
 #[cfg(test)]
 extern crate serde_json;
+#[cfg(test)]
+extern crate hex;
 
 use rlp::RlpStream;
 use secp256k1::{Message, Secp256k1, SecretKey};
@@ -161,6 +163,14 @@ mod test {
         run_test("./test/test_txs_ropsten.json");
     }
 
+    #[test]
+    fn test_enough_gas() {
+        run_eth_test(
+            "./tests/src/TransactionTestsFiller/ttData/DataTestEnoughGASFiller.json",
+            "./tests/TransactionTests/ttData/DataTestEnoughGAS.json"
+        );
+    }
+
     #[derive(Serialize, Deserialize, Clone)]
     struct Signing {
         signed: Vec<u8>,
@@ -177,4 +187,28 @@ mod test {
             assert_eq!(signed.signed, rtx.sign(signed.private_key.as_ref()));
         }
     }
+
+    fn run_eth_test(src_path: &str, test_path: &str) {
+        let mut src_file = File::open(src_path).expect(&format!("Failed to open: {}", src_path));
+        let mut test_file = File::open(test_path).expect(&format!("Failed to open: {}", test_path));
+        let mut src_contents = String::new();
+        let mut test_contents = String::new();
+        src_file.read_to_string(&mut src_contents).unwrap();
+        test_file.read_to_string(&mut test_contents).unwrap();
+        let src: serde_json::Value = serde_json::from_str(&src_contents).unwrap();
+        let _test: serde_json::Value = serde_json::from_str(&test_contents).unwrap();
+        let transaction = &src["DataTestEnoughGAS"]["transaction"];
+        let secret_key = &transaction["//secretkey"]
+            .as_str()
+            .unwrap()
+            .replace("secretkey ", "")
+            .clone();
+
+        let _data = &transaction["data"]
+            .as_str()
+            .unwrap();
+
+        println!("Secret key: {:?}", hex::decode(secret_key).unwrap());
+    }
 }
+
