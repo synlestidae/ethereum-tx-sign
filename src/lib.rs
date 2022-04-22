@@ -116,6 +116,7 @@ impl Transaction for LegacyTransaction {
     }
 }
 
+#[derive(Debug)]
 pub struct EcdsaSig {
     v: u64,
     r: Vec<u8>,
@@ -196,7 +197,7 @@ mod test {
         src_file.read_to_string(&mut src_contents).unwrap();
         test_file.read_to_string(&mut test_contents).unwrap();
         let src: serde_json::Value = serde_json::from_str(&src_contents).unwrap();
-        let _test: serde_json::Value = serde_json::from_str(&test_contents).unwrap();
+        let test: serde_json::Value = serde_json::from_str(&test_contents).unwrap();
         let transaction = &src["DataTestEnoughGAS"]["transaction"];
         let secret_key = &transaction["//secretkey"]
             .as_str()
@@ -204,11 +205,70 @@ mod test {
             .replace("secretkey ", "")
             .clone();
 
-        let _data = &transaction["data"]
+        let data = hex::decode(&transaction["data"]
             .as_str()
+            .unwrap()
+            .replace(":raw 0x", "")).unwrap();
+
+        let gas: u128 = transaction["gasLimit"]
+            .as_str()
+            .unwrap()
+            .parse()
             .unwrap();
 
-        println!("Secret key: {:?}", hex::decode(secret_key).unwrap());
+        let gas_price: u128 = transaction["gasPrice"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+
+        let nonce: u128 = transaction["nonce"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+
+        let to_bytes = hex::decode(&transaction["to"]
+            .as_str()
+            .unwrap()
+        ).unwrap();
+
+        let mut to = [0u8; 20];
+        for (i, b) in to_bytes.into_iter().enumerate() {
+            to[i] = b;
+        }
+
+        let value: u128 = transaction["value"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+
+        let tx = LegacyTransaction {
+            chain: 1,
+            nonce,
+            to: Some(to),
+            value,
+            gas_price,
+            gas,
+            data
+        };
+
+        //println!("TX: {:?}", tx);
+
+        let private_key = hex::decode(secret_key).unwrap();
+
+        let signed_bytes = tx.sign(&private_key);
+        let _hash = tx.hash();
+        let _ecdsa = tx.ecdsa(&private_key);
+
+        let tx_bytes = hex::decode(test["DataTestEnoughGAS"]["txbytes"]
+            .as_str()
+            .unwrap()
+            .replace("0x", "")
+        ).unwrap();
+            
+        assert_eq!(hex::encode(tx_bytes), hex::encode(signed_bytes));
     }
 }
 
