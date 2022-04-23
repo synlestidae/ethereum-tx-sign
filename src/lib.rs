@@ -30,9 +30,20 @@ pub trait Transaction {
     fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig;
 
     /// Sign and encode this transaction using the given ECDSA signature.
-    /// Signing is done in two steps:
+    /// Signing is done in two steps. Example:
     /// ```
-    /// let ecdsa = tx.ecdsa(private_key);
+    /// use ethereum_tx_sign::{LegacyTransaction, Transaction};
+    ///
+    /// let tx = LegacyTransaction {
+    ///     chain: 1,
+    ///     nonce: 0,
+    ///     to: Some([0x45; 20]),
+    ///     value: 1000,
+    ///     gas_price: 20 * 10u128.pow(9),
+    ///     gas: 21000,
+    ///     data: vec![]
+    /// };
+    /// let ecdsa = tx.ecdsa(&vec![0x35; 32]);
     /// let tx_bytes = tx.sign(&ecdsa);
     /// ```
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8>;
