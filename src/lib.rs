@@ -29,7 +29,12 @@ pub trait Transaction {
     /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction
     fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig;
 
-    /// Sign and encode this transaction using the given private key
+    /// Sign and encode this transaction using the given ECDSA signature.
+    /// Signing is done in two steps:
+    /// ```
+    /// let ecdsa = tx.ecdsa(private_key);
+    /// let tx_bytes = tx.sign(&ecdsa);
+    /// ```
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8>;
 }
 
