@@ -48,6 +48,11 @@ pub trait Transaction {
     /// let tx_bytes = tx.sign(&ecdsa);
     /// ```
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8>;
+
+    /// Return the fields of the transaction as a list of RLP-encodable 
+    /// parts. The parts must follow the order that they will be encoded,
+    /// hashed, or signed.
+    fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>>;
 }
 
 /// EIP-2817 Typed Transaction Envelope
@@ -74,26 +79,6 @@ pub struct LegacyTransaction {
     pub gas: u128,
     /// Input data
     pub data: Vec<u8>,
-}
-
-impl LegacyTransaction {
-    /// Return the fields of the transaction as a list of RLP-encodable 
-    /// parts. The parts must follow the order that they will be encoded,
-    /// hashed, or signed.
-    fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>> {
-        let to: Vec<u8> = match self.to {
-            Some(ref to) => to.iter().cloned().collect(),
-            None => vec![],
-        };
-        vec![
-            Box::new(self.nonce),
-            Box::new(self.gas_price),
-            Box::new(self.gas),
-            Box::new(to.clone()),
-            Box::new(self.value),
-            Box::new(self.data.clone())
-        ]
-    }
 }
 
 impl Transaction for LegacyTransaction {
@@ -139,6 +124,21 @@ impl Transaction for LegacyTransaction {
         let hash = self.hash();
 
         EcdsaSig::generate(hash, private_key, self.chain())
+    }
+
+    fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>> {
+        let to: Vec<u8> = match self.to {
+            Some(ref to) => to.iter().cloned().collect(),
+            None => vec![],
+        };
+        vec![
+            Box::new(self.nonce),
+            Box::new(self.gas_price),
+            Box::new(self.gas),
+            Box::new(to.clone()),
+            Box::new(self.value),
+            Box::new(self.data.clone())
+        ]
     }
 }
 
