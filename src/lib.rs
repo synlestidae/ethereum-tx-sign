@@ -168,11 +168,36 @@ pub struct AccessListTransaction {
 
 impl AccessListTransaction {
     fn rlp(&self) -> RlpStream {
-        todo!("Write this just like the other")
+        let mut rlp = RlpStream::new();
+        rlp.begin_unbounded_list();
+        rlp.append(&self.chain);
+        rlp.append(&self.nonce);
+        rlp.append(&self.gas_price);
+        rlp.append(&self.gas);
+        match self.to {
+            Some(ref to) => {
+                rlp.append(&to.as_ref());
+            }
+            None => {
+                rlp.append(&vec![]);
+            }
+        };
+        rlp.append(&self.value);
+        rlp.append(&self.data);
+        rlp.append(&self.access_list);
+
+        // the list is deliberately left incomplete
+        rlp
     }
 }
 
-impl Transaction for AccessListTransaction {
+const EIP_2930_TYPE: u8 = 0x01;
+
+impl TypedTransaction for AccessListTransaction {
+    fn transaction_type(&self) -> u8 {
+        EIP_2930_TYPE
+    }
+
     fn chain(&self) -> u64 {
         self.chain
     }
@@ -204,15 +229,16 @@ impl Transaction for AccessListTransaction {
 
         rlp_stream.finalize_unbounded_list();
 
-        return rlp_stream.out().to_vec();
+        let tx = rlp_stream.out().to_vec();
+        tx.insert(
     }
 }
 
 #[derive(Debug)]
 pub struct EcdsaSig {
-    v: u64,
-    r: Vec<u8>,
-    s: Vec<u8>,
+    pub v: u64,
+    pub r: Vec<u8>,
+    pub s: Vec<u8>,
 }
 
 impl EcdsaSig {
