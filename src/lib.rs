@@ -151,6 +151,7 @@ pub struct AccessListTransaction {
     pub chain: u64,
     /// Nonce
     pub nonce: u128,
+    /// Gas Price
     #[serde(rename = "gasPrice")]
     pub gas_price: u128,
     /// Gas amount
@@ -159,11 +160,52 @@ pub struct AccessListTransaction {
     pub to: Option<[u8; 20]>,
     /// Transfered value
     pub value: u128,
-    /// Gas Price
     /// Input data
     pub data: Vec<u8>,
-
+    /// List of addresses and storage keys the transaction plans to access
     pub access_list: Vec<Access>
+}
+
+impl AccessListTransaction {
+    fn rlp(&self) -> RlpStream {
+        todo!("Write this just like the other")
+    }
+}
+
+impl Transaction for AccessListTransaction {
+    fn chain(&self) -> u64 {
+        self.chain
+    }
+
+    fn hash(&self) -> [u8; 32] {
+        todo!("Must be basically the same as LegacyTransaction")
+    }
+
+    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
+        let hash = self.hash();
+
+        EcdsaSig::generate(hash, private_key, self.chain())
+    }
+
+    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
+        let mut rlp_stream = self.rlp();
+
+        match ecdsa {
+            EcdsaSig {
+                ref v,
+                ref s,
+                ref r,
+            } => {
+                rlp_stream.append(v);
+                rlp_stream.append(r);
+                rlp_stream.append(s);
+            }
+        }
+
+        rlp_stream.finalize_unbounded_list();
+
+        return rlp_stream.out().to_vec();
+    }
 }
 
 #[derive(Debug)]
