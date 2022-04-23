@@ -10,9 +10,9 @@ extern crate tiny_keccak;
 #[cfg(test)]
 extern crate ethereum_types;
 #[cfg(test)]
-extern crate serde_json;
-#[cfg(test)]
 extern crate hex;
+#[cfg(test)]
+extern crate serde_json;
 
 use rlp::RlpStream;
 use secp256k1::{Message, Secp256k1, SecretKey};
@@ -25,17 +25,16 @@ pub trait Transaction {
 
     /// Compute the unique transaction hash
     fn hash(&self) -> [u8; 32];
-    
+
     /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction
     fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig;
 
     /// Sign and encode this transaction using the given private key
-    fn sign(&self, private_key: &[u8]) -> Vec<u8>;
+    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8>;
 }
 
 /// EIP-2817 Typed Transaction Envelope
 pub trait TypedTransaction: Transaction {
-
     /// Returns the transaction type byte
     fn transaction_type(&self) -> u8;
 }
@@ -63,15 +62,20 @@ pub struct LegacyTransaction {
 impl LegacyTransaction {
     fn rlp(&self) -> RlpStream {
         let mut rlp = RlpStream::new();
-        let to: &[u8] = &match self.to {
-            Some(ref to) => to.as_ref(),
-            None => &[0; 0],
-        };
         rlp.begin_unbounded_list();
         rlp.append(&self.nonce);
         rlp.append(&self.gas_price);
         rlp.append(&self.gas);
-        rlp.append(&to);
+        match self.to {
+            Some(ref to) => {
+                //let to: &[u8] = to.as_ref();
+                rlp.append(&to.as_ref());
+            }
+            None => {
+                // &[0; 0]
+                rlp.append(&vec![]);
+            }
+        };
         rlp.append(&self.value);
         rlp.append(&self.data);
         // the list is deliberately left incomplete
@@ -93,14 +97,18 @@ impl Transaction for LegacyTransaction {
         keccak256_hash(&hash.out())
     }
 
-    fn sign(&self, private_key: &[u8]) -> Vec<u8> {
+    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
         let mut rlp_stream = self.rlp();
 
-        match self.ecdsa(private_key) {
-            EcdsaSig { v, s, r } => {
-                rlp_stream.append(&v);
-                rlp_stream.append(&r);
-                rlp_stream.append(&s);
+        match ecdsa {
+            EcdsaSig {
+                ref v,
+                ref s,
+                ref r,
+            } => {
+                rlp_stream.append(v);
+                rlp_stream.append(r);
+                rlp_stream.append(s);
             }
         }
 
@@ -165,11 +173,24 @@ mod test {
     }
 
     #[test]
-    fn test_enough_gas() {
-        run_eth_test(
-            "./tests/src/TransactionTestsFiller/ttData/DataTestEnoughGASFiller.json",
-            "./tests/TransactionTests/ttData/DataTestEnoughGAS.json"
-        );
+    fn test_signs_tx_on_eip_spec() {
+        let tx = LegacyTransaction {
+            chain: 1,
+            nonce: 9,
+            gas_price: 20 * 10u128.pow(9),
+            gas: 21000, 
+            to: Some([0x35; 20]),
+            value: 10u128.pow(18),
+            data: vec![]
+        };
+
+        let ecdsa = tx.ecdsa(&[0x46u8; 32]);
+        let hash = hex::encode(tx.hash());
+        let signed_data = hex::encode(tx.sign(&ecdsa));
+
+        assert_eq!(hash, "daf5a779ae972f972197303d7b574746c7ef83eadac0f2791ad23db92e4c8e53");
+        assert_eq!(ecdsa.v, 37);
+        assert_eq!(signed_data, "f86c098504a817c800825208943535353535353535353535353535353535353535880de0b6b3a76400008025a028ef61340bd939bc2195fe537567866003e1a15d3c71ff63e1590620aa636276a067cbe9d8997f761aecb703304b3800ccf555c9f3dc64214b297fb1966a3b6d83");
     }
 
     #[derive(Serialize, Deserialize, Clone)]
@@ -185,90 +206,11 @@ mod test {
         let txs: Vec<(LegacyTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
         for (tx, signed) in txs.into_iter() {
             let rtx: LegacyTransaction = tx.into();
-            assert_eq!(signed.signed, rtx.sign(signed.private_key.as_ref()));
+            assert_eq!(
+                signed.signed,
+                rtx.sign(&rtx.ecdsa(signed.private_key.as_ref()))
+            );
         }
-    }
-
-    fn run_eth_test(src_path: &str, test_path: &str) {
-        let mut src_file = File::open(src_path).expect(&format!("Failed to open: {}", src_path));
-        let mut test_file = File::open(test_path).expect(&format!("Failed to open: {}", test_path));
-        let mut src_contents = String::new();
-        let mut test_contents = String::new();
-        src_file.read_to_string(&mut src_contents).unwrap();
-        test_file.read_to_string(&mut test_contents).unwrap();
-        let src: serde_json::Value = serde_json::from_str(&src_contents).unwrap();
-        let test: serde_json::Value = serde_json::from_str(&test_contents).unwrap();
-        let transaction = &src["DataTestEnoughGAS"]["transaction"];
-        let secret_key = &transaction["//secretkey"]
-            .as_str()
-            .unwrap()
-            .replace("secretkey ", "")
-            .clone();
-
-        let data = hex::decode(&transaction["data"]
-            .as_str()
-            .unwrap()
-            .replace(":raw 0x", "")).unwrap();
-
-        let gas: u128 = transaction["gasLimit"]
-            .as_str()
-            .unwrap()
-            .parse()
-            .unwrap();
-
-        let gas_price: u128 = transaction["gasPrice"]
-            .as_str()
-            .unwrap()
-            .parse()
-            .unwrap();
-
-        let nonce: u128 = transaction["nonce"]
-            .as_str()
-            .unwrap()
-            .parse()
-            .unwrap();
-
-        let to_bytes = hex::decode(&transaction["to"]
-            .as_str()
-            .unwrap()
-        ).unwrap();
-
-        let mut to = [0u8; 20];
-        for (i, b) in to_bytes.into_iter().enumerate() {
-            to[i] = b;
-        }
-
-        let value: u128 = transaction["value"]
-            .as_str()
-            .unwrap()
-            .parse()
-            .unwrap();
-
-        let tx = LegacyTransaction {
-            chain: 1,
-            nonce,
-            to: Some(to),
-            value,
-            gas_price,
-            gas,
-            data
-        };
-
-        //println!("TX: {:?}", tx);
-
-        let private_key = hex::decode(secret_key).unwrap();
-
-        let signed_bytes = tx.sign(&private_key);
-        let _hash = tx.hash();
-        let _ecdsa = tx.ecdsa(&private_key);
-
-        let tx_bytes = hex::decode(test["DataTestEnoughGAS"]["txbytes"]
-            .as_str()
-            .unwrap()
-            .replace("0x", "")
-        ).unwrap();
-            
-        assert_eq!(hex::encode(tx_bytes), hex::encode(signed_bytes));
     }
 }
 
