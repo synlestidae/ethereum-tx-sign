@@ -6,15 +6,17 @@ extern crate num_traits;
 extern crate rlp;
 extern crate secp256k1;
 extern crate tiny_keccak;
+extern crate bytes;
 
 #[cfg(test)]
 extern crate ethereum_types;
 #[cfg(test)]
 extern crate serde_json;
 
-use rlp::RlpStream;
+use rlp::{RlpStream, Encodable};
 use secp256k1::{Message, Secp256k1, SecretKey};
 use tiny_keccak::{Hasher, Keccak};
+use bytes::Bytes;
 
 /// Ethereum transaction
 pub trait Transaction {
@@ -59,21 +61,19 @@ pub struct LegacyTransaction {
 }
 
 impl LegacyTransaction {
-    fn rlp(&self) -> RlpStream {
-        let mut rlp = RlpStream::new();
-        let to: &[u8] = &match self.to {
-            Some(ref to) => to.as_ref(),
-            None => &[0; 0],
+    fn rlp<'a>(&'a self) -> Vec<Bytes> {
+        let to: Vec<u8> = match self.to {
+            Some(ref to) => to.iter().cloned().collect(),
+            None => vec![],
         };
-        rlp.begin_unbounded_list();
-        rlp.append(&self.nonce);
-        rlp.append(&self.gas_price);
-        rlp.append(&self.gas);
-        rlp.append(&to);
-        rlp.append(&self.value);
-        rlp.append(&self.data);
-        // the list is deliberately left incomplete
-        rlp
+        vec![
+            self.nonce.rlp_bytes().into(),
+            self.gas_price.rlp_bytes().into(),
+            self.gas.rlp_bytes().into(),
+            to.rlp_bytes().into(),
+            self.value.rlp_bytes().into(),
+            self.data.rlp_bytes().into(),
+        ]
     }
 }
 
@@ -83,17 +83,26 @@ impl Transaction for LegacyTransaction {
     }
 
     fn hash(&self) -> [u8; 32] {
-        let mut hash = self.rlp();
-        hash.append(&self.chain());
-        hash.append_raw(&[0x80], 1);
-        hash.append_raw(&[0x80], 1);
-        hash.finalize_unbounded_list();
-        keccak256_hash(&hash.out())
+        let rlp = self.rlp();
+        let mut rlp_stream = RlpStream::new();
+        rlp_stream.begin_unbounded_list();
+        for r in rlp.iter() {
+            rlp_stream.append(r);
+        }
+        rlp_stream.append(&self.chain());
+        rlp_stream.append_raw(&[0x80], 1);
+        rlp_stream.append_raw(&[0x80], 1);
+        rlp_stream.finalize_unbounded_list();
+        keccak256_hash(&rlp_stream.out())
     }
 
     fn sign(&self, private_key: &[u8]) -> Vec<u8> {
-        let mut rlp_stream = self.rlp();
-
+        let mut rlp_stream = RlpStream::new();
+        let rlp = self.rlp();
+        rlp_stream.begin_unbounded_list();
+        for r in rlp.iter() {
+            rlp_stream.append(r);
+        }
         match self.ecdsa(private_key) {
             EcdsaSig { v, s, r } => {
                 rlp_stream.append(&v);
