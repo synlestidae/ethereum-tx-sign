@@ -25,10 +25,26 @@ pub trait Transaction {
     fn chain(&self) -> u64;
 
     /// Compute the unique transaction hash
-    fn hash(&self) -> [u8; 32];
+    fn hash(&self) -> [u8; 32] {
+        let rlp = self.rlp_parts();
+        let mut rlp_stream = RlpStream::new();
+        rlp_stream.begin_unbounded_list();
+        for r in rlp.iter() {
+            rlp_stream.append(r);
+        }
+        rlp_stream.append(&self.chain());
+        rlp_stream.append_raw(&[0x80], 1);
+        rlp_stream.append_raw(&[0x80], 1);
+        rlp_stream.finalize_unbounded_list();
+        keccak256_hash(&rlp_stream.out())
+    }
 
     /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction
-    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig;
+    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
+        let hash = self.hash();
+
+        EcdsaSig::generate(hash, private_key, self.chain())
+    }
 
     /// Sign and encode this transaction using the given ECDSA signature.
     /// Signing is done in two steps. Example:
@@ -47,7 +63,25 @@ pub trait Transaction {
     /// let ecdsa = tx.ecdsa(&vec![0x35; 32]);
     /// let tx_bytes = tx.sign(&ecdsa);
     /// ```
-    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8>;
+    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
+        let mut rlp_stream = RlpStream::new();
+        let rlp = self.rlp_parts();
+        rlp_stream.begin_unbounded_list();
+        for r in rlp.iter() {
+            rlp_stream.append(r);
+        }
+        match ecdsa {
+            EcdsaSig { v, s, r } => {
+                rlp_stream.append(v);
+                rlp_stream.append(r);
+                rlp_stream.append(s);
+            }
+        }
+
+        rlp_stream.finalize_unbounded_list();
+
+        return rlp_stream.out().to_vec();
+    }
 
     /// Return the fields of the transaction as a list of RLP-encodable 
     /// parts. The parts must follow the order that they will be encoded,
@@ -84,46 +118,6 @@ pub struct LegacyTransaction {
 impl Transaction for LegacyTransaction {
     fn chain(&self) -> u64 {
         self.chain
-    }
-
-    fn hash(&self) -> [u8; 32] {
-        let rlp = self.rlp_parts();
-        let mut rlp_stream = RlpStream::new();
-        rlp_stream.begin_unbounded_list();
-        for r in rlp.iter() {
-            rlp_stream.append(r);
-        }
-        rlp_stream.append(&self.chain());
-        rlp_stream.append_raw(&[0x80], 1);
-        rlp_stream.append_raw(&[0x80], 1);
-        rlp_stream.finalize_unbounded_list();
-        keccak256_hash(&rlp_stream.out())
-    }
-
-    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
-        let mut rlp_stream = RlpStream::new();
-        let rlp = self.rlp_parts();
-        rlp_stream.begin_unbounded_list();
-        for r in rlp.iter() {
-            rlp_stream.append(r);
-        }
-        match ecdsa {
-            EcdsaSig { v, s, r } => {
-                rlp_stream.append(v);
-                rlp_stream.append(r);
-                rlp_stream.append(s);
-            }
-        }
-
-        rlp_stream.finalize_unbounded_list();
-
-        return rlp_stream.out().to_vec();
-    }
-
-    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
-        let hash = self.hash();
-
-        EcdsaSig::generate(hash, private_key, self.chain())
     }
 
     fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>> {
@@ -169,71 +163,34 @@ pub struct AccessListTransaction {
     pub access_list: Vec<Access>
 }
 
-impl AccessListTransaction {
-    fn rlp(&self) -> RlpStream {
-        let mut rlp = RlpStream::new();
-        rlp.begin_unbounded_list();
-        rlp.append(&self.chain);
-        rlp.append(&self.nonce);
-        rlp.append(&self.gas_price);
-        rlp.append(&self.gas);
-        match self.to {
-            Some(ref to) => {
-                rlp.append(&to.as_ref());
-            }
-            None => {
-                rlp.append(&vec![]);
-            }
-        };
-        rlp.append(&self.value);
-        rlp.append(&self.data);
-        rlp.append(&self.access_list);
-
-        // the list is deliberately left incomplete
-        rlp
-    }
-}
-
 const EIP_2930_TYPE: u8 = 0x01;
 
-impl TypedTransaction for AccessListTransaction {
-    fn transaction_type(&self) -> u8 {
-        EIP_2930_TYPE
-    }
-
+impl Transaction for AccessListTransaction {
     fn chain(&self) -> u64 {
         self.chain
     }
 
-    fn hash(&self) -> [u8; 32] {
-        todo!("Must be basically the same as LegacyTransaction")
+    #[allow(warnings)]
+    fn rlp_parts(&self) -> Vec<Box<dyn Encodable>> {
+        let to: Vec<u8> = match self.to {
+            Some(ref to) => to.iter().cloned().collect(),
+            None => vec![],
+        };
+        vec![
+            Box::new(self.nonce),
+            Box::new(self.gas_price),
+            Box::new(self.gas),
+            Box::new(to.clone()),
+            Box::new(self.value),
+            Box::new(self.data.clone()),
+            todo!("Put the access list here")
+        ]
     }
+}
 
-    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
-        let hash = self.hash();
-
-        EcdsaSig::generate(hash, private_key, self.chain())
-    }
-
-    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
-        let mut rlp_stream = self.rlp();
-
-        match ecdsa {
-            EcdsaSig {
-                ref v,
-                ref s,
-                ref r,
-            } => {
-                rlp_stream.append(v);
-                rlp_stream.append(r);
-                rlp_stream.append(s);
-            }
-        }
-
-        rlp_stream.finalize_unbounded_list();
-
-        let tx = rlp_stream.out().to_vec();
-        tx.insert(
+impl TypedTransaction for AccessListTransaction {
+    fn transaction_type(&self) -> u8 {
+        EIP_2930_TYPE
     }
 }
 
