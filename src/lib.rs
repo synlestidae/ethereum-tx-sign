@@ -18,7 +18,6 @@ extern crate serde_json;
 use rlp::{RlpStream, Encodable};
 use secp256k1::{Message, Secp256k1, SecretKey};
 use tiny_keccak::{Hasher, Keccak};
-use bytes::Bytes;
 
 /// Ethereum transaction
 pub trait Transaction {
@@ -78,18 +77,18 @@ pub struct LegacyTransaction {
 }
 
 impl LegacyTransaction {
-    fn rlp<'a>(&'a self) -> Vec<Bytes> {
+    fn rlp<'a>(&'a self) -> Vec<Box<dyn Encodable>> {
         let to: Vec<u8> = match self.to {
             Some(ref to) => to.iter().cloned().collect(),
             None => vec![],
         };
         vec![
-            self.nonce.rlp_bytes().into(),
-            self.gas_price.rlp_bytes().into(),
-            self.gas.rlp_bytes().into(),
-            to.rlp_bytes().into(),
-            self.value.rlp_bytes().into(),
-            self.data.rlp_bytes().into(),
+            Box::new(self.nonce),
+            Box::new(self.gas_price),
+            Box::new(self.gas),
+            Box::new(to.clone()),
+            Box::new(self.value),
+            Box::new(self.data.clone())
         ]
     }
 }
