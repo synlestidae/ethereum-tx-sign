@@ -193,17 +193,20 @@ mod test {
             chain: 1,
             nonce: 9,
             gas_price: 20 * 10u128.pow(9),
-            gas: 21000, 
+            gas: 21000,
             to: Some([0x35; 20]),
             value: 10u128.pow(18),
-            data: vec![]
+            data: vec![],
         };
 
         let ecdsa = tx.ecdsa(&[0x46u8; 32]);
         let hash = hex::encode(tx.hash());
         let signed_data = hex::encode(tx.sign(&ecdsa));
 
-        assert_eq!(hash, "daf5a779ae972f972197303d7b574746c7ef83eadac0f2791ad23db92e4c8e53");
+        assert_eq!(
+            hash,
+            "daf5a779ae972f972197303d7b574746c7ef83eadac0f2791ad23db92e4c8e53"
+        );
         assert_eq!(ecdsa.v, 37);
         assert_eq!(signed_data, "f86c098504a817c800825208943535353535353535353535353535353535353535880de0b6b3a76400008025a028ef61340bd939bc2195fe537567866003e1a15d3c71ff63e1590620aa636276a067cbe9d8997f761aecb703304b3800ccf555c9f3dc64214b297fb1966a3b6d83");
     }
@@ -228,4 +231,3 @@ mod test {
         }
     }
 }
-
