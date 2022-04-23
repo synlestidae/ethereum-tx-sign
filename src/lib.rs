@@ -68,16 +68,15 @@ impl LegacyTransaction {
         rlp.append(&self.gas);
         match self.to {
             Some(ref to) => {
-                //let to: &[u8] = to.as_ref();
                 rlp.append(&to.as_ref());
             }
             None => {
-                // &[0; 0]
                 rlp.append(&vec![]);
             }
         };
         rlp.append(&self.value);
         rlp.append(&self.data);
+
         // the list is deliberately left incomplete
         rlp
     }
