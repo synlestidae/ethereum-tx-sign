@@ -77,7 +77,10 @@ pub struct LegacyTransaction {
 }
 
 impl LegacyTransaction {
-    fn rlp<'a>(&'a self) -> Vec<Box<dyn Encodable>> {
+    /// Return the fields of the transaction as a list of RLP-encodable 
+    /// parts. The parts must follow the order that they will be encoded,
+    /// hashed, or signed.
+    fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>> {
         let to: Vec<u8> = match self.to {
             Some(ref to) => to.iter().cloned().collect(),
             None => vec![],
@@ -99,7 +102,7 @@ impl Transaction for LegacyTransaction {
     }
 
     fn hash(&self) -> [u8; 32] {
-        let rlp = self.rlp();
+        let rlp = self.rlp_parts();
         let mut rlp_stream = RlpStream::new();
         rlp_stream.begin_unbounded_list();
         for r in rlp.iter() {
@@ -114,7 +117,7 @@ impl Transaction for LegacyTransaction {
 
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
         let mut rlp_stream = RlpStream::new();
-        let rlp = self.rlp();
+        let rlp = self.rlp_parts();
         rlp_stream.begin_unbounded_list();
         for r in rlp.iter() {
             rlp_stream.append(r);
