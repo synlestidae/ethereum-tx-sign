@@ -6,6 +6,7 @@ extern crate num_traits;
 extern crate rlp;
 extern crate secp256k1;
 extern crate tiny_keccak;
+extern crate bytes;
 
 #[cfg(test)]
 extern crate ethereum_types;
@@ -14,7 +15,7 @@ extern crate hex;
 #[cfg(test)]
 extern crate serde_json;
 
-use rlp::RlpStream;
+use rlp::{RlpStream, Encodable};
 use secp256k1::{Message, Secp256k1, SecretKey};
 use tiny_keccak::{Hasher, Keccak};
 
@@ -47,6 +48,11 @@ pub trait Transaction {
     /// let tx_bytes = tx.sign(&ecdsa);
     /// ```
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8>;
+
+    /// Return the fields of the transaction as a list of RLP-encodable 
+    /// parts. The parts must follow the order that they will be encoded,
+    /// hashed, or signed.
+    fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>>;
 }
 
 /// EIP-2817 Typed Transaction Envelope
@@ -75,52 +81,34 @@ pub struct LegacyTransaction {
     pub data: Vec<u8>,
 }
 
-impl LegacyTransaction {
-    fn rlp(&self) -> RlpStream {
-        let mut rlp = RlpStream::new();
-        rlp.begin_unbounded_list();
-        rlp.append(&self.nonce);
-        rlp.append(&self.gas_price);
-        rlp.append(&self.gas);
-        match self.to {
-            Some(ref to) => {
-                rlp.append(&to.as_ref());
-            }
-            None => {
-                rlp.append(&vec![]);
-            }
-        };
-        rlp.append(&self.value);
-        rlp.append(&self.data);
-
-        // the list is deliberately left incomplete
-        rlp
-    }
-}
-
 impl Transaction for LegacyTransaction {
     fn chain(&self) -> u64 {
         self.chain
     }
 
     fn hash(&self) -> [u8; 32] {
-        let mut hash = self.rlp();
-        hash.append(&self.chain());
-        hash.append_raw(&[0x80], 1);
-        hash.append_raw(&[0x80], 1);
-        hash.finalize_unbounded_list();
-        keccak256_hash(&hash.out())
+        let rlp = self.rlp_parts();
+        let mut rlp_stream = RlpStream::new();
+        rlp_stream.begin_unbounded_list();
+        for r in rlp.iter() {
+            rlp_stream.append(r);
+        }
+        rlp_stream.append(&self.chain());
+        rlp_stream.append_raw(&[0x80], 1);
+        rlp_stream.append_raw(&[0x80], 1);
+        rlp_stream.finalize_unbounded_list();
+        keccak256_hash(&rlp_stream.out())
     }
 
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
-        let mut rlp_stream = self.rlp();
-
+        let mut rlp_stream = RlpStream::new();
+        let rlp = self.rlp_parts();
+        rlp_stream.begin_unbounded_list();
+        for r in rlp.iter() {
+            rlp_stream.append(r);
+        }
         match ecdsa {
-            EcdsaSig {
-                ref v,
-                ref s,
-                ref r,
-            } => {
+            EcdsaSig { v, s, r } => {
                 rlp_stream.append(v);
                 rlp_stream.append(r);
                 rlp_stream.append(s);
@@ -136,6 +124,21 @@ impl Transaction for LegacyTransaction {
         let hash = self.hash();
 
         EcdsaSig::generate(hash, private_key, self.chain())
+    }
+
+    fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>> {
+        let to: Vec<u8> = match self.to {
+            Some(ref to) => to.iter().cloned().collect(),
+            None => vec![],
+        };
+        vec![
+            Box::new(self.nonce),
+            Box::new(self.gas_price),
+            Box::new(self.gas),
+            Box::new(to.clone()),
+            Box::new(self.value),
+            Box::new(self.data.clone())
+        ]
     }
 }
 
