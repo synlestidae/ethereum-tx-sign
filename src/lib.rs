@@ -65,7 +65,10 @@ pub struct FeeMarketTransaction {
     /// Chain ID
     pub chain: u64,
     pub nonce: u128,
+    /// Max gas price willing to pay to miners
     pub max_priority_fee_per_gas: u128,
+    /// Max gas price the transaction is willing to pay total, which covers
+    /// the priority and base fee
     pub max_fee_per_gas: u128,
     pub gas_limit: u128,
     /// Destination address
@@ -76,17 +79,69 @@ pub struct FeeMarketTransaction {
     pub access_list: Vec<u8>,
 }
 
+impl FeeMarketTransaction {
+    fn rlp(&self) -> RlpStream {
+        let mut rlp = RlpStream::new();
+        let destination: &[u8] = match self.destination {
+            Some(ref d) => d,
+            None => &[0; 0],
+        };
+
+        // TODO: do we need begin_list()?
+        rlp.append(&self.chain());
+        rlp.append(&self.nonce);
+        rlp.append(&self.max_priority_fee_per_gas);
+        rlp.append(&self.max_fee_per_gas);
+        rlp.append(&self.gas_limit);
+        rlp.append(&destination);
+        rlp.append(&self.amount);
+        rlp.append(&self.data);
+        rlp.append(&self.access_list);
+        rlp
+    }
+}
+
 impl Transaction for FeeMarketTransaction {
     fn chain(&self) -> u64 {
         self.chain
     }
 
     fn hash(&self) -> [u8; 32] {
-        unimplemented!()
+        let mut txn: Vec<u8> = vec![self.transaction_type()];
+
+        // do we have to call finalize on rlp stream first?
+        let rlp_bytes = self.rlp().out();
+        txn.append(&mut rlp_bytes.to_vec());
+        keccak256_hash(&txn)
+    }
+
+    // TODO: this is the same as legacy txn, and probably same logic for most txn
+    // types. We could implement a default method
+    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
+        let hash = self.hash();
+        EcdsaSig::generate(hash, private_key, self.chain())
+    }
+
+    // TODO: figure out finalizing unbounded list issue
+    // TODO: v is encoded according to EIP-155. But EIP-1559 specifies that "v"
+    // should just be signature_y_parity, which is a boolean.
+    fn sign(&self, private_key: &[u8]) -> Vec<u8> {
+         let mut rlp_stream = self.rlp();
+
+         match self.ecdsa(private_key) {
+             EcdsaSig { v, r, s } => {
+                 rlp_stream.append(&v);
+                 rlp_stream.append(&r);
+                 rlp_stream.append(&s);
+             }
+         };
+
+         rlp_stream.out().to_vec()
     }
 }
 
 impl TypedTransaction for FeeMarketTransaction {
+    /// EIP-1559 transactions have types of 0x02
     fn transaction_type(&self) -> u8 { 2 }
 }
 
