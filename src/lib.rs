@@ -136,13 +136,24 @@ impl Transaction for LegacyTransaction {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Access {
     pub address: [u8; 20],
     pub storage_keys: Vec<[u8; 32]>
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct AccessList {
+    pub list: Vec<Access>
+}
+
+impl Encodable for AccessList {
+    fn rlp_append(&self, _: &mut RlpStream) { 
+        todo!() 
+    }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct AccessListTransaction {
     /// Chain ID
     pub chain: u64,
@@ -160,7 +171,7 @@ pub struct AccessListTransaction {
     /// Input data
     pub data: Vec<u8>,
     /// List of addresses and storage keys the transaction plans to access
-    pub access_list: Vec<Access>
+    pub access_list: AccessList
 }
 
 const EIP_2930_TYPE: u8 = 0x01;
@@ -183,7 +194,7 @@ impl Transaction for AccessListTransaction {
             Box::new(to.clone()),
             Box::new(self.value),
             Box::new(self.data.clone()),
-            todo!("Put the access list here")
+            Box::new(self.access_list.clone())
         ]
     }
 }
