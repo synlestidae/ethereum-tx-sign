@@ -75,7 +75,7 @@ pub struct FeeMarketTransaction {
     pub destination: Option<[u8; 20]>,
     pub amount: u128,
     pub data: Vec<u8>,
-    // TODO: update access list to proper value
+    // TODO: update access list to Vec<Access> once other PR merged
     pub access_list: Vec<u8>,
 }
 
@@ -119,12 +119,10 @@ impl Transaction for FeeMarketTransaction {
     // types. We could implement a default method
     fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
         let hash = self.hash();
-        EcdsaSig::generate(hash, private_key, self.chain())
+        EcdsaSig::generate(hash, private_key, None)
     }
 
     // TODO: figure out finalizing unbounded list issue
-    // TODO: v is encoded according to EIP-155. But EIP-1559 specifies that "v"
-    // should just be signature_y_parity, which is a boolean.
     fn sign(&self, private_key: &[u8]) -> Vec<u8> {
          let mut rlp_stream = self.rlp();
 
@@ -207,7 +205,7 @@ impl Transaction for LegacyTransaction {
     fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
         let hash = self.hash();
 
-        EcdsaSig::generate(hash, private_key, self.chain())
+        EcdsaSig::generate(hash, private_key, Some(self.chain()))
     }
 
     fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>> {
@@ -234,14 +232,22 @@ pub struct EcdsaSig {
 }
 
 impl EcdsaSig {
-    pub fn generate(hash: [u8; 32], private_key: &[u8], chain_id: u64) -> EcdsaSig {
+    pub fn generate(hash: [u8; 32], private_key: &[u8], chain_id: Option<u64>) -> EcdsaSig {
         let s = Secp256k1::signing_only();
         let msg = Message::from_slice(&hash).unwrap();
         let key = SecretKey::from_slice(private_key).unwrap();
         let (v, sig_bytes) = s.sign_ecdsa_recoverable(&msg, &key).serialize_compact();
 
+        // if chain_id is passed, then we set v according to EIP-155
+        // otherwise, we just use the raw v value, which should be 1 or 0
+        // NOTE: spec says bool, does this make a difference?
+        let v_sig = match chain_id {
+            Some(c) => v.to_i32() as u64 + c * 2 + 35,
+            None => v.to_i32() as u64,
+        };
+
         EcdsaSig {
-            v: v.to_i32() as u64 + chain_id * 2 + 35,
+            v: v_sig,
             r: sig_bytes[0..32].to_vec(),
             s: sig_bytes[32..64].to_vec(),
         }
