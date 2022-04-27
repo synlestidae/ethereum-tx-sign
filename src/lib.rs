@@ -148,8 +148,30 @@ pub struct AccessList {
 }
 
 impl Encodable for AccessList {
-    fn rlp_append(&self, _: &mut RlpStream) { 
-        todo!() 
+    /// Encodes the access list according to [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930).
+    fn rlp_append(&self, rlp_stream: &mut RlpStream) { 
+        rlp_stream.begin_unbounded_list();
+
+        for access in self.list.iter() {
+            let address_bytes: Vec<u8> = access.address.iter().cloned().collect();
+
+            rlp_stream.begin_unbounded_list();
+            rlp_stream.append(&address_bytes);
+           
+            // append the list of keys 
+            {
+                rlp_stream.begin_unbounded_list();
+                for storage_key in access.storage_keys.iter() {
+                    let storage_key_bytes: Vec<u8> = storage_key.iter().cloned().collect();
+                    rlp_stream.append(&storage_key_bytes);
+                }
+                rlp_stream.finalize_unbounded_list();
+            }
+
+            rlp_stream.finalize_unbounded_list();
+        }
+
+        rlp_stream.finalize_unbounded_list();
     }
 }
 
