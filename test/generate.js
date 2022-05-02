@@ -1,45 +1,116 @@
 const Common = require('@ethereumjs/common').default;
 const { Chain, Hardfork } = require('@ethereumjs/common')
 const { AccessListEIP2930Transaction } = require('@ethereumjs/tx');
+const yargs = require('yargs/yargs');
+const { hideBin } = require('yargs/helpers');
+const { randomBytes } = require('crypto');
 
-const common = new Common({ chain: Chain.Mainnet, hardfork: Hardfork.Berlin })
+const common = new Common({ chain: Chain.Mainnet, hardfork: Hardfork.Berlin });
 
-const txData = {
+//const results = processScenario(randomScenario());
+
+const params = yargs(hideBin(process.argv))
+  .option('random', {
+    alias: 'r',
+    type: 'boolean',
+    description: 'If true, random transactions will be generated and signed',
+		demandOption: true,
+		default: false
+  })
+  .option('number', {
+    alias: 'n',
+    type: 'number',
+		default: 10,
+    description: 'If --random is used, this is how many random transactions are desired' ,
+		demandOption: true,
+  })
+  .option('file', {
+    alias: 'f',
+    type: 'string',
+    description: 'If --random is not used, the file from which to read input transactions' ,
+		demandOption: false,
+  })
+	.help()
+	.argv;
+
+function getScenarios(params) {
+	if (params.random) {
+		return randomScenarios(params);
+	} else if (params.file) {
+		console.error('Sorry, --file is not yet implemented');
+		process.exit(1);
+	} else {
+		console.error('Either --file or --random is required');
+		process.exit(1);
+	}
 }
 
-const scenario = {
-	transaction: {
-		"data": "0x1a8451e600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-		"gasLimit": "0x02625a00",
-		"gasPrice": "0x01",
-		"nonce": "0x00",
-		"to": "0xcccccccccccccccccccccccccccccccccccccccc",
-		"value": "0x0186a0",
-		//"v": "0x01",
-		//"r": "0xafb6e247b1c490e284053c87ab5f6b59e219d51f743f7a4d83e400782bc7e4b9",
-		//"s": "0x479a268e0e0acd4de3f1e28e4fac2a6b32a4195e8dfa9d19147abe8807aa6f64",
-		"chainId": "0x01",
-		"accessList": [
-			{
-				"address": "0x0000000000000000000000000000000000000101",
-				"storageKeys": [
-					"0x0000000000000000000000000000000000000000000000000000000000000000",
-					"0x00000000000000000000000000000000000000000000000000000000000060a7"
-				]
-			}
-		],
-		"type": "0x01"
-	},
-	"privateKey": '0xe331b6d69882b4cb4ea581d88e0b604039a3de5967688d3dcffdd2270c0fd109'
-};
+function randomScenarios({ number }) {
+	let scenarios = [];
+	for (let i = 0; i < number; i++) {
+		scenarios.push(randomScenario());
+	}
+	return scenarios;
+}
 
-//const tx = AccessListEIP2930Transaction.fromTxData(scenario.transaction, { common })
-//const signedTx = tx.sign(privateKey);
+function randomScenario() {
+	// TODO make this support all transactions
+
+	const accessList = [];
+
+	for (let i = 0; i < randInt(10); i++) {
+		const address = '0x' + randomBytes(20).toString('hex');
+		const storageKeys = [];
+		
+		for (let i = 1; i < randInt(5); i++) {
+			storageKeys.push('0x' + randomBytes(32).toString('hex'));
+		}
+
+		accessList.push({
+			address,
+			storageKeys
+		});
+	}
+
+	return {
+		transaction: {
+			"data": randomBytes(1024),
+			"gasLimit": randHexInt(0xFFFFFFFF),
+			"gasPrice": randHexInt(0xFFFFFFFF),
+			"nonce": randHexInt(0xFFFFF),
+			"to": '0x' + randomBytes(20).toString('hex'),
+			"value": Number.MAX_SAFE_INTEGER,
+			"chainId": '0x01',
+			accessList,
+			"type": "0x01"
+		},
+		"privateKey": '0x' + randomBytes(32).toString('hex')
+	};
+}
+
+function randHexInt(n) {
+	return '0x' + randInt(n).toString(16);
+}
+
+function randInt(n) {
+	return Math.floor(Math.random() * n)
+}
+
+function processScenarios(scenarios) {
+	const processedScenarios = [];
+
+	for (let scenario of scenarios) {
+		processedScenarios.push(processScenario(scenario));
+	}
+
+	return processedScenarios;
+}
 
 function processScenario({ transaction, privateKey }) {
+	const originalPrivateKey = privateKey;
 	const tx = AccessListEIP2930Transaction.fromTxData(transaction, { common })
 	privateKey = Buffer.from(
-		scenario.privateKey.replace('0x', ''),
+		privateKey.replace('0x', ''),
 		'hex',
 	);
 
@@ -48,8 +119,7 @@ function processScenario({ transaction, privateKey }) {
 		input: {
 			...transaction
 		},
-		privateKey: {
-		},
+		privateKey: originalPrivateKey,
 		output: {
 			v: '0x' + signedTx.v,
 			r: '0x' + signedTx.r,
@@ -59,10 +129,12 @@ function processScenario({ transaction, privateKey }) {
 	};
 }
 
-const processedScenario = processScenario(scenario);
+// now actually do the stuff!
 
-const results = {
-	'Transaction to 0xcccccccccccccccccccccccccccccccccccccccc with access list': processedScenario
-};
+const scenarios = getScenarios(params);
+const processedScenarios = processScenarios(scenarios);
+for (let s of processedScenarios) {
+	s.input.data = '0x' + s.input.data.toString('hex');
+}
 
-console.log(JSON.stringify(results, null, 2));
+console.log(JSON.stringify(processedScenarios, (k, x) => Buffer.isBuffer(x) ? '0x' + x.toString('hex'): x, 2));
