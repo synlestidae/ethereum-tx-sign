@@ -7,17 +7,18 @@ extern crate rlp;
 extern crate secp256k1;
 extern crate tiny_keccak;
 extern crate bytes;
+extern crate hex;
 
 #[cfg(test)]
 extern crate ethereum_types;
-#[cfg(test)]
-extern crate hex;
 #[cfg(test)]
 extern crate serde_json;
 
 use rlp::{RlpStream, Encodable};
 use secp256k1::{Message, Secp256k1, SecretKey};
 use tiny_keccak::{Hasher, Keccak};
+use serde::ser::SerializeStruct;
+use serde::de::{self, Visitor};
 
 /// Ethereum transaction
 pub trait Transaction {
@@ -175,7 +176,7 @@ impl Encodable for AccessList {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct AccessListTransaction {
     /// Chain ID
     pub chain: u64,
@@ -194,6 +195,38 @@ pub struct AccessListTransaction {
     pub data: Vec<u8>,
     /// List of addresses and storage keys the transaction plans to access
     pub access_list: AccessList
+}
+
+struct TransactionDeserializer;
+
+impl<'de> Visitor<'de> for TransactionDeserializer{
+    type Value = AccessListTransaction;
+
+}
+
+impl serde::Serialize for AccessListTransaction {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        const NUM_FIELDS: usize = 8;
+
+        let mut struct_state = serializer.serialize_struct("AccessListTransaction", 
+            NUM_FIELDS)?;
+        struct_state.serialize_field("chain", &self.chain)?;
+        struct_state.serialize_field("nonce", &self.nonce)?;
+        struct_state.serialize_field("gasPrice", &self.gas_price)?;
+        struct_state.serialize_field("gas", &self.gas)?;
+
+        let to = self.to.map(|t| hex::encode(t));
+        struct_state.serialize_field("to", &to)?;
+        struct_state.serialize_field("value", &self.value)?;
+
+        let data = hex::encode(&self.data);
+        struct_state.serialize_field("data", &data)?;
+        struct_state.serialize_field("accessList", &self.access_list)?;
+        struct_state.end()
+    }
 }
 
 const EIP_2930_TYPE: u8 = 0x01;
