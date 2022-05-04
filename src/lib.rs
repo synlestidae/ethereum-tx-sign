@@ -17,8 +17,8 @@ extern crate serde_json;
 use rlp::{RlpStream, Encodable};
 use secp256k1::{Message, Secp256k1, SecretKey};
 use tiny_keccak::{Hasher, Keccak};
-use serde::ser::SerializeStruct;
-use serde::de::{self, Visitor};
+use serde::Deserialize;
+use serde::de::Error;
 
 /// Ethereum transaction
 pub trait Transaction {
@@ -139,7 +139,11 @@ impl Transaction for LegacyTransaction {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Access {
+    #[serde(serialize_with = "option_array_u8_serialize")]
+    #[serde(deserialize_with = "option_array_u8_deserialize")]
     pub address: [u8; 20],
+    #[serde(serialize_with = "array_u8_32_serialize")]
+    #[serde(deserialize_with = "array_u8_32_deserialize")]
     pub storage_keys: Vec<[u8; 32]>
 }
 
@@ -176,7 +180,7 @@ impl Encodable for AccessList {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct AccessListTransaction {
     /// Chain ID
     pub chain: u64,
@@ -188,46 +192,83 @@ pub struct AccessListTransaction {
     /// Gas amount
     pub gas: u128,
     /// Recipient (None when contract creation)
+    #[serde(serialize_with = "option_array_u8_serialize")]
+    #[serde(deserialize_with = "option_array_u8_deserialize")]
     pub to: Option<[u8; 20]>,
     /// Transfered value
     pub value: u128,
     /// Input data
+    #[serde(serialize_with = "slice_u8_serialize")]
+    #[serde(deserialize_with = "slice_u8_deserialize")]
     pub data: Vec<u8>,
     /// List of addresses and storage keys the transaction plans to access
     pub access_list: AccessList
 }
 
-struct TransactionDeserializer;
-
-impl<'de> Visitor<'de> for TransactionDeserializer{
-    type Value = AccessListTransaction;
-
-}
-
-impl serde::Serialize for AccessListTransaction {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        const NUM_FIELDS: usize = 8;
-
-        let mut struct_state = serializer.serialize_struct("AccessListTransaction", 
-            NUM_FIELDS)?;
-        struct_state.serialize_field("chain", &self.chain)?;
-        struct_state.serialize_field("nonce", &self.nonce)?;
-        struct_state.serialize_field("gasPrice", &self.gas_price)?;
-        struct_state.serialize_field("gas", &self.gas)?;
-
-        let to = self.to.map(|t| hex::encode(t));
-        struct_state.serialize_field("to", &to)?;
-        struct_state.serialize_field("value", &self.value)?;
-
-        let data = hex::encode(&self.data);
-        struct_state.serialize_field("data", &data)?;
-        struct_state.serialize_field("accessList", &self.access_list)?;
-        struct_state.end()
+fn option_array_u8_serialize<S>(
+    to: &Option<[u8; 20]>,
+    s: S
+) -> Result<S::Ok, S::Error> where S: serde::Serializer {
+    match to {
+        Some(ref array) => slice_u8_serialize(array, s),
+        None => s.serialize_none()
     }
 }
+
+const HEX_PREFIX: &'static str = "0x";
+
+fn slice_u8_deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error> where D: serde::Deserializer<'de> {
+    let s: String = String::deserialize(deserializer)?;
+    let s = if s.starts_with(HEX_PREFIX) { s.replace(HEX_PREFIX, "") } else { s };
+    match hex::decode(&s) {
+        Ok(s) => Ok(s),
+        Err(_) => todo!()
+    }
+}
+
+fn option_array_u8_deserialize<'de, D>(deserializer: D) -> Result<Option<[u8; 20]>, D::Error> where D: serde::Deserializer<'de> {
+    let s_option: Option<String> = Option::deserialize(deserializer)?;
+    const TO_LEN: usize = 20;
+    match s_option {
+        None => return Ok(None),
+        Some(s) => {
+            let s = if s.starts_with(HEX_PREFIX) { s.replace(HEX_PREFIX, "") } else { s };
+            match hex::decode(&s) {
+                Ok(s) => {
+                    let mut to = [0u8; 20];
+                    if s.len() != TO_LEN {
+                        for (i, b) in s.iter().enumerate() {
+                            to[i] = *b;
+                        }
+
+                        Ok(Some(to))
+                    } else {
+                        Err(D::Error::invalid_length(20, &"a hex string of length 20"))
+                    }
+                },
+                Err(err) => {
+                    Err(match err {
+                        hex::FromHexError::InvalidHexCharacter { c, .. } => 
+                            D::Error::invalid_value(serde::de::Unexpected::Char(c), &"a valid hex character"),
+                        hex::FromHexError::OddLength =>
+                            D::Error::invalid_length((s.len() / 2) * 2, &"a hex string of even length"),
+                        hex::FromHexError::InvalidStringLength =>
+                            D::Error::invalid_length(s.len() * 2, &"a hex string that matches container length")
+                    })
+                    
+                } // TODO use the hex error
+            }
+        }
+    }
+}
+
+fn slice_u8_serialize<S>(
+    slice: &[u8],
+    s: S
+) -> Result<S::Ok, S::Error> where S: serde::Serializer {
+    s.serialize_str(&format!("0x{}", hex::encode(slice)))
+}
+
 
 const EIP_2930_TYPE: u8 = 0x01;
 
@@ -292,7 +333,7 @@ pub fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 mod test {
-    use crate::{LegacyTransaction, AccessListTransaction, Transaction, AccessList};
+    use crate::{LegacyTransaction, AccessListTransaction, Transaction};
     use ethereum_types::H256;
     use serde_json;
     use std::fs::File;
@@ -359,86 +400,6 @@ mod test {
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
         let txs: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
-        let tx = &txs[name];
-
-        let data: Vec<u8> = hex::decode(tx["input"]["data"].to_string().replace("0x", "")).unwrap();
-        let nonce: u128= u128::from_str_radix(&tx["input"]["nonce"].to_string().replace("0x", ""), 16).unwrap();
-        let gas_price: u128= u128::from_str_radix(&tx["input"]["gasPrice"].to_string().replace("0x", ""), 16).unwrap();
-        let gas: u128 = u128::from_str_radix(&tx["input"]["gas"].to_string().replace("0x", ""), 16).unwrap();
-        let to_value: Vec<u8> = hex::decode(tx["input"]["to"].to_string().replace("0x", "")).unwrap();
-        let value: u128 = u128::from_str_radix(&tx["input"]["value"].to_string().replace("0x", ""), 16).unwrap();
-        let mut list = vec![];
-        if let serde_json::Value::Array(ref access_list_value) = &tx["input"]["accessList"] {
-            for l in access_list_value {
-                todo!()
-            }
-        } else {
-            panic!("Missing input.accessList");
-        }
-        let mut to: [u8; 20] = [0u8; 20];
-        for (i, b) in to_value.iter().enumerate() {
-            to[i] = *b;
-        }
-
-        let mut access_list: AccessList = AccessList { list };
-
-        AccessListTransaction {
-            chain: 0x1,
-            to: Some(to),
-            nonce,
-            gas_price,
-            gas,
-            value,
-            data,
-            access_list
-        }
-
-
-        /*tx["input"]["gasLimit"]
-        tx["input"]["gasPrice"]
-        tx["input"]["nonce"]
-        tx["input"]["to"]
-        tx["input"]["value"]
-        tx["input"]["chainId"]
-      "data": "0x",
-      "gasLimit": "0x7277a5e5",
-      "gasPrice": "0x59b7e2c5",
-      "nonce": "0xa084b",
-      "to": "0xb7aa9f0cf3e1362a44e30f5c5569020d9b193ede",
-      "value": 9007199254740991,
-      "chainId": "0x01",
-      "accessList": [
-        {
-          "address": "0x0bc91aa7b85a6c2b5c1c7e4868ba8c0657344abe",
-          "storageKeys": []
-        },
-        {
-          "address": "0x93f8f391eb7c3160b099208a735a9c5b56833c7e",
-          "storageKeys": []
-        },
-        {
-          "address": "0x329ae780b13c071c61ae7f89b8ad73cedd219270",
-          "storageKeys": [
-            "0x7ca71a9e3dfe0d9ae9ddee9951e7eb41d1c5077cd4fb62a60f69ad28b0ce85df",
-            "0x785a70008e2968a4ecad13eb3ff47945d850eb4ab8f7fd263f6049f7e0ecd329"
-          ]
-        }
-      ],
-      "type": "0x01"
-    },
-    "privateKey": "0xa5dacd86a1c840ac5325fb6b4e9bb91a9346e438e22ad18d62cf6a7d4883376b",
-
-        let expect_tx: AccessListTransaction = AccessListTransaction {
-            chain,
-            nonce,
-            gas_price,
-            gas,
-            to,
-            value,
-            data,
-            access_list,
-        };
-
-        todo!()*/
+        serde_json::from_value(txs[name].clone()).unwrap()
     }
 }
