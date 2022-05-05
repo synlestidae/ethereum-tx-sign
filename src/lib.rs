@@ -233,34 +233,34 @@ where
     }
 }
 
-fn storage_keys_deserialize<'de, D>(deserializer: D) -> Result<Vec<[u8; 32]>, D::Error>
+fn storage_keys_deserialize<'de, D>(_deserializer: D) -> Result<Vec<[u8; 32]>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
+    todo!()
     /*let s: String = String::deserialize(deserializer)?;
     let s = if s.starts_with(HEX_PREFIX) { s.replace(HEX_PREFIX, "") } else { s };
     match hex::decode(&s) {
         Ok(s) => Ok(s),
         Err(_) => todo!()
     }*/
-    todo!()
 }
 
-fn storage_keys_serialize<S>(storage_keys: &Vec<[u8; 32]>, s: S) -> Result<S::Ok, S::Error>
+fn storage_keys_serialize<S>(_storage_keys: &Vec<[u8; 32]>, _s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
     todo!()
 }
 
-fn array_u8_20_serialize<S>(storage_keys: &[u8; 20], s: S) -> Result<S::Ok, S::Error>
+fn array_u8_20_serialize<S>(_storage_keys: &[u8; 20], _s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
     todo!()
 }
 
-fn array_u8_20_deserialize<'de, D>(d: D) -> Result<[u8; 20], D::Error>
+fn array_u8_20_deserialize<'de, D>(_d: D) -> Result<[u8; 20], D::Error>
 where
     D: serde::Deserializer<'de>,
 {
