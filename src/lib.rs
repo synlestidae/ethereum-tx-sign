@@ -17,9 +17,10 @@ extern crate serde_json;
 use rlp::{Encodable, RlpStream};
 use secp256k1::{Message, Secp256k1, SecretKey};
 use serde::de::Error;
+use serde::ser::SerializeSeq;
 use serde::Deserialize;
-use tiny_keccak::{Hasher, Keccak};
 use std::convert::TryInto;
+use tiny_keccak::{Hasher, Keccak};
 
 /// Ethereum transaction
 pub trait Transaction {
@@ -228,7 +229,6 @@ fn slice_u8_deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    println!("Here!");
     let s: String = String::deserialize(deserializer)?;
     let s = if s.starts_with(HEX_PREFIX) {
         s.replace(HEX_PREFIX, "")
@@ -237,7 +237,7 @@ where
     };
     match hex::decode(&s) {
         Ok(s) => Ok(s),
-        Err(_) => todo!(),
+        Err(err) => Err(derr::<D>(&s, err)),
     }
 }
 
@@ -245,53 +245,71 @@ fn storage_keys_deserialize<'de, D>(deserializer: D) -> Result<Vec<[u8; 32]>, D:
 where
     D: serde::Deserializer<'de>,
 {
-    println!("Here 2!");
     let storage_key_vec: Vec<String> = Vec::deserialize(deserializer)?;
     let mut storage_keys = vec![];
     for storage_key in storage_key_vec.into_iter() {
-        let s = if storage_key.starts_with(HEX_PREFIX) { storage_key.replace(HEX_PREFIX, "") } else { storage_key }; 
+        let s = if storage_key.starts_with(HEX_PREFIX) {
+            storage_key.replace(HEX_PREFIX, "")
+        } else {
+            storage_key
+        };
         let s = match hex::decode(&s) {
             Ok(s) => s,
-            Err(_err) => todo!()
+            Err(err) => return Err(derr::<D>(&s, err)),
         };
+        let s_len = s.len();
         let arr = match s.try_into() {
             Ok(a) => a,
-            Err(_) => todo!()
+            Err(_) => {
+                return Err(D::Error::invalid_length(
+                    s_len,
+                    &"a hex string of length 20",
+                ))
+            }
         };
         storage_keys.push(arr) // TODO
     }
     Ok(storage_keys)
 }
 
-fn storage_keys_serialize<S>(_storage_keys: &Vec<[u8; 32]>, _s: S) -> Result<S::Ok, S::Error>
+fn storage_keys_serialize<S>(storage_keys: &Vec<[u8; 32]>, s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
-    todo!()
+    let mut seq = s.serialize_seq(Some(storage_keys.len()))?;
+    for storage_key in storage_keys.iter() {
+        seq.serialize_element(&hex::encode(storage_key))?;
+    }
+    seq.end()
 }
 
-fn array_u8_20_serialize<S>(_storage_keys: &[u8; 20], _s: S) -> Result<S::Ok, S::Error>
+fn array_u8_20_serialize<S>(storage_keys: &[u8; 20], s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
-    todo!()
+    s.serialize_str(&hex::encode(
+        storage_keys.iter().cloned().collect::<Vec<u8>>(),
+    ))
 }
 
-fn array_u8_20_deserialize<'de, D>(_d: D) -> Result<[u8; 20], D::Error>
+fn array_u8_20_deserialize<'de, D>(d: D) -> Result<[u8; 20], D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    println!("Here 3!");
-    todo!()
+    match option_array_u8_deserialize(d)? {
+        Some(a) => Ok(a),
+        None => Err(
+            D::Error::invalid_value(serde::de::Unexpected::Option, &"a hex string of length 20"), // TODO is error accurate?
+        ),
+    }
 }
 
 fn option_array_u8_deserialize<'de, D>(deserializer: D) -> Result<Option<[u8; 20]>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    println!("Here 4!");
-    let s_option: Option<String> = Option::deserialize(deserializer)?;
     const TO_LEN: usize = 20;
+    let s_option: Option<String> = Option::deserialize(deserializer)?;
     match s_option {
         None => return Ok(None),
         Some(s) => {
@@ -303,7 +321,6 @@ where
             match hex::decode(&s) {
                 Ok(s) => {
                     let mut to = [0u8; 20];
-                    //println!("SSSS: ({}) {:?}", s.len(), s);
                     if s.len() == TO_LEN {
                         for (i, b) in s.iter().enumerate() {
                             to[i] = *b;
@@ -326,8 +343,22 @@ where
                         s.len() * 2,
                         &"a hex string that matches container length",
                     ),
-                }), // TODO use the hex error
+                }),
             }
+        }
+    }
+}
+
+fn derr<'de, D: serde::Deserializer<'de>>(s: &str, err: hex::FromHexError) -> D::Error {
+    match err {
+        hex::FromHexError::InvalidHexCharacter { c, .. } => {
+            D::Error::invalid_value(serde::de::Unexpected::Char(c), &"a valid hex character")
+        }
+        hex::FromHexError::OddLength => {
+            D::Error::invalid_length((s.len() / 2) * 2 + 2, &"a hex string of even length")
+        }
+        hex::FromHexError::InvalidStringLength => {
+            D::Error::invalid_length(s.len() * 2, &"a hex string that matches container length")
         }
     }
 }
@@ -336,7 +367,7 @@ fn slice_u8_serialize<S>(slice: &[u8], s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
-    s.serialize_str(&format!("0x{}", hex::encode(slice)))
+    s.serialize_str(&format!("{}", hex::encode(slice)))
 }
 
 const EIP_2930_TYPE: u8 = 0x01;
@@ -406,7 +437,7 @@ pub fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 mod test {
-    use crate::{AccessListTransaction, LegacyTransaction, Transaction, EcdsaSig};
+    use crate::{AccessListTransaction, EcdsaSig, LegacyTransaction, Transaction};
     use ethereum_types::H256;
     use serde_json;
     use std::collections::HashMap;
@@ -417,12 +448,10 @@ mod test {
     /*fn test_signs_transaction_eth() {
         run_test("./test/test_txs.json");
     }*/
-
     #[test]
     /*fn test_signs_transaction_ropsten() {
         run_test("./test/test_txs_ropsten.json");
     }*/
-
     #[test]
     /*fn test_signs_tx_on_eip_spec() {
         let tx = LegacyTransaction {
@@ -480,11 +509,13 @@ mod test {
         let values: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
 
         let transaction: T = serde_json::from_value(values["input"].clone()).unwrap();
-        let private_key_string: String = serde_json::from_value(values["privateKey"].clone()).unwrap();
+        let private_key_string: String =
+            serde_json::from_value(values["privateKey"].clone()).unwrap();
         let ecdsa: EcdsaSig = serde_json::from_value(values["output"].clone()).unwrap();
-        let bytes_string: String = serde_json::from_value(values["output"]["bytes"].clone()).unwrap();
+        let bytes_string: String =
+            serde_json::from_value(values["output"]["bytes"].clone()).unwrap();
         let bytes = hex::decode(&bytes_string).unwrap();
-        
+
         assert_eq!(bytes, transaction.sign(&ecdsa));
     }
 }
