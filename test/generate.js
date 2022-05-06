@@ -7,8 +7,6 @@ const { randomBytes } = require('crypto');
 
 const common = new Common({ chain: Chain.Mainnet, hardfork: Hardfork.Berlin });
 
-//const results = processScenario(randomScenario());
-
 const params = yargs(hideBin(process.argv))
   .option('random', {
     alias: 'r',
@@ -75,12 +73,12 @@ function randomScenario() {
 	return {
 		transaction: {
 			"data": randomBytes(1024),
-			"gasLimit": randHexInt(0xFFFFFFFF),
+			"gas": randHexInt(0xFFFFFFFF),
 			"gasPrice": randHexInt(0xFFFFFFFF),
 			"nonce": randHexInt(0xFFFFF),
 			"to": '0x' + randomBytes(20).toString('hex'),
 			"value": Number.MAX_SAFE_INTEGER,
-			"chainId": '0x01',
+			"chain": 0x01,
 			accessList,
 			"type": "0x01"
 		},
@@ -89,7 +87,7 @@ function randomScenario() {
 }
 
 function randHexInt(n) {
-	return '0x' + randInt(n).toString(16);
+	return randInt(n);//.toString(16);
 }
 
 function randInt(n) {
@@ -132,9 +130,12 @@ function processScenario({ transaction, privateKey }) {
 // now actually do the stuff!
 
 const scenarios = getScenarios(params);
-const processedScenarios = processScenarios(scenarios);
+let processedScenarios = processScenarios(scenarios);
 for (let s of processedScenarios) {
 	s.input.data = '0x' + s.input.data.toString('hex');
+}
+if (processedScenarios.length === 1) {
+	processedScenarios = processedScenarios[0];
 }
 
 console.log(JSON.stringify(processedScenarios, (k, x) => Buffer.isBuffer(x) ? '0x' + x.toString('hex'): x, 2));
