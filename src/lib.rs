@@ -154,36 +154,34 @@ pub struct Access {
     pub storage_keys: Vec<[u8; 32]>,
 }
 
-//#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-//pub type AccessList = Vec<Access>;//{
-    //pub list: Vec<Access>,
-//}
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct AccessList(Vec<Access>);
 
-impl Encodable for Access {
+impl Encodable for AccessList {
     /// Encodes the access list according to [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930).
     fn rlp_append(&self, rlp_stream: &mut RlpStream) {
-        //rlp_stream.begin_unbounded_list();
-
-        //for access in self.list.iter() {
-        let address_bytes: Vec<u8> = self.address.iter().cloned().collect();
-
         rlp_stream.begin_unbounded_list();
-        rlp_stream.append(&address_bytes);
 
-        // append the list of keys
-        {
+        for access in self.0.iter() {
+            let address_bytes: Vec<u8> = access.address.iter().cloned().collect();
+
             rlp_stream.begin_unbounded_list();
-            for storage_key in self.storage_keys.iter() {
-                let storage_key_bytes: Vec<u8> = storage_key.iter().cloned().collect();
-                rlp_stream.append(&storage_key_bytes);
+            rlp_stream.append(&address_bytes);
+
+            // append the list of keys
+            {
+                rlp_stream.begin_unbounded_list();
+                for storage_key in access.storage_keys.iter() {
+                    let storage_key_bytes: Vec<u8> = storage_key.iter().cloned().collect();
+                    rlp_stream.append(&storage_key_bytes);
+                }
+                rlp_stream.finalize_unbounded_list();
             }
+
             rlp_stream.finalize_unbounded_list();
         }
 
         rlp_stream.finalize_unbounded_list();
-        //}
-
-        //rlp_stream.finalize_unbounded_list();
     }
 }
 
@@ -210,7 +208,7 @@ pub struct AccessListTransaction {
     pub data: Vec<u8>,
     /// List of addresses and storage keys the transaction plans to access
     #[serde(rename = "accessList")]
-    pub access_list: Vec<Access>
+    pub access_list: AccessList,
 }
 
 fn option_array_u8_serialize<S>(to: &Option<[u8; 20]>, s: S) -> Result<S::Ok, S::Error>
@@ -328,22 +326,27 @@ where
 
                         Ok(Some(to))
                     } else {
-                        Err(D::Error::invalid_length(s.len(), &"a hex string of length 20"))
+                        Err(D::Error::invalid_length(
+                            s.len(),
+                            &"a hex string of length 20",
+                        ))
                     }
                 }
-                Err(err) => Err(derr::<D>(&s, err)/*match err {
-                    hex::FromHexError::InvalidHexCharacter { c, .. } => D::Error::invalid_value(
-                        serde::de::Unexpected::Char(c),
-                        &"a valid hex character",
-                    ),
-                    hex::FromHexError::OddLength => {
-                        D::Error::invalid_length(s.len(), &"a hex string of even length")
-                    }
-                    hex::FromHexError::InvalidStringLength => D::Error::invalid_length(
-                        s.len() * 2,
-                        &"a hex string that matches container length",
-                    ),
-                }*/),
+                Err(err) => Err(
+                    derr::<D>(&s, err), /*match err {
+                                            hex::FromHexError::InvalidHexCharacter { c, .. } => D::Error::invalid_value(
+                                                serde::de::Unexpected::Char(c),
+                                                &"a valid hex character",
+                                            ),
+                                            hex::FromHexError::OddLength => {
+                                                D::Error::invalid_length(s.len(), &"a hex string of even length")
+                                            }
+                                            hex::FromHexError::InvalidStringLength => D::Error::invalid_length(
+                                                s.len() * 2,
+                                                &"a hex string that matches container length",
+                                            ),
+                                        }*/
+                ),
             }
         }
     }
@@ -513,8 +516,9 @@ mod test {
         let private_key_string: String =
             serde_json::from_value(values["privateKey"].clone()).unwrap();
         let ecdsa: EcdsaSig = serde_json::from_value(values["output"].clone()).unwrap();
-        let bytes_string: String =
+        let mut bytes_string: String =
             serde_json::from_value(values["output"]["bytes"].clone()).unwrap();
+        bytes_string = bytes_string.replace("0x", "");
         let bytes = hex::decode(&bytes_string).unwrap();
 
         assert_eq!(bytes, transaction.sign(&ecdsa));

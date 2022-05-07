@@ -112,6 +112,7 @@ function processScenario({ transaction, privateKey }) {
 		'hex',
 	);
 
+
 	const signedTx = tx.sign(privateKey);
 	return {
 		input: {
@@ -119,9 +120,9 @@ function processScenario({ transaction, privateKey }) {
 		},
 		privateKey: originalPrivateKey,
 		output: {
-			v: '0x' + signedTx.v,
-			r: '0x' + signedTx.r,
-			s: '0x' + signedTx.s,
+			v: parseInt(signedTx.v),
+			r: '0x' + signedTx.r.toBuffer('bigendian', 32).toString('hex'),
+			s: '0x' + signedTx.s.toBuffer('bigendian', 32).toString('hex'),
 			bytes: '0x' + signedTx.serialize().toString('hex')
 		}
 	};
