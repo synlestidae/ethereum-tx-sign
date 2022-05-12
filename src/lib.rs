@@ -66,30 +66,36 @@ pub trait Transaction {
     /// let ecdsa = tx.ecdsa(&vec![0x35; 32]);
     /// let tx_bytes = tx.sign(&ecdsa);
     /// ```
-    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
-        let mut rlp_stream = RlpStream::new();
-        let rlp = self.rlp_parts();
-        rlp_stream.begin_unbounded_list();
-        for r in rlp.iter() {
-            rlp_stream.append(r);
-        }
-        match ecdsa {
-            EcdsaSig { v, s, r } => {
-                rlp_stream.append(v);
-                rlp_stream.append(r);
-                rlp_stream.append(s);
-            }
-        }
-
-        rlp_stream.finalize_unbounded_list();
-
-        return rlp_stream.out().to_vec();
-    }
+    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8>;
 
     /// Return the fields of the transaction as a list of RLP-encodable
     /// parts. The parts must follow the order that they will be encoded,
     /// hashed, or signed.
     fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>>;
+}
+
+fn sign_bytes<T: Transaction>(tx_type: Option<u8>, ecdsa: &EcdsaSig, t: &T) -> Vec<u8> {
+    let mut rlp_stream = RlpStream::new();
+    let rlp = t.rlp_parts();
+    rlp_stream.begin_unbounded_list();
+    for r in rlp.iter() {
+        rlp_stream.append(r);
+    }
+    match ecdsa {
+        EcdsaSig { v, s, r } => {
+            rlp_stream.append(v);
+            rlp_stream.append(r);
+            rlp_stream.append(s);
+        }
+    }
+
+    rlp_stream.finalize_unbounded_list();
+
+    let mut bytes_out = rlp_stream.out().to_vec();
+    if let Some(t) = tx_type {
+        bytes_out.insert(0usize, t);
+    }
+    bytes_out
 }
 
 /// EIP-2817 Typed Transaction Envelope
@@ -140,6 +146,10 @@ impl Transaction for LegacyTransaction {
             Box::new(self.value),
             Box::new(self.data.clone()),
         ]
+    }
+
+    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
+        sign_bytes(None, ecdsa, self)
     }
 }
 
@@ -397,6 +407,10 @@ impl Transaction for AccessListTransaction {
             Box::new(self.access_list.clone()),
         ]
     }
+
+    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
+        sign_bytes(Some(EIP_2930_TYPE), ecdsa, self)
+    }
 }
 
 impl TypedTransaction for AccessListTransaction {
@@ -449,58 +463,7 @@ mod test {
     use std::io::Read;
 
     #[test]
-    /*fn test_signs_transaction_eth() {
-        run_test("./test/test_txs.json");
-    }*/
-    #[test]
-    /*fn test_signs_transaction_ropsten() {
-        run_test("./test/test_txs_ropsten.json");
-    }*/
-    #[test]
-    /*fn test_signs_tx_on_eip_spec() {
-        let tx = LegacyTransaction {
-            chain: 1,
-            nonce: 9,
-            gas_price: 20 * 10u128.pow(9),
-            gas: 21000,
-            to: Some([0x35; 20]),
-            value: 10u128.pow(18),
-            data: vec![],
-        };
-
-        let ecdsa = tx.ecdsa(&[0x46u8; 32]);
-        let hash = hex::encode(tx.hash());
-        let signed_data = hex::encode(tx.sign(&ecdsa));
-
-        assert_eq!(
-            hash,
-            "daf5a779ae972f972197303d7b574746c7ef83eadac0f2791ad23db92e4c8e53"
-        );
-        assert_eq!(ecdsa.v, 37);
-        assert_eq!(signed_data, "f86c098504a817c800825208943535353535353535353535353535353535353535880de0b6b3a76400008025a028ef61340bd939bc2195fe537567866003e1a15d3c71ff63e1590620aa636276a067cbe9d8997f761aecb703304b3800ccf555c9f3dc64214b297fb1966a3b6d83");
-    }*/
-
-    /*#[derive(Serialize, Deserialize, Clone)]
-    struct Signing {
-        signed: Vec<u8>,
-        private_key: H256,
-    }*/
-
-    /*fn run_test(path: &str) {
-        let mut file = File::open(path).unwrap();
-        let mut f_string = String::new();
-        file.read_to_string(&mut f_string).unwrap();
-        let txs: Vec<(LegacyTransaction, Signing)> = serde_json::from_str(&f_string).unwrap();
-        for (tx, signed) in txs.into_iter() {
-            let rtx: LegacyTransaction = tx.into();
-            assert_eq!(
-                signed.signed,
-                rtx.sign(&rtx.ecdsa(signed.private_key.as_ref()))
-            );
-        }
-    }*/
-    #[test]
-    fn test_random_transaction_001() {
+    fn test_random_access_list_transaction_001() {
         run_signing_test::<AccessListTransaction>("./test/randomTransaction001.json");
     }
 
@@ -519,8 +482,15 @@ mod test {
         let mut bytes_string: String =
             serde_json::from_value(values["output"]["bytes"].clone()).unwrap();
         bytes_string = bytes_string.replace("0x", "");
-        let bytes = hex::decode(&bytes_string).unwrap();
 
-        assert_eq!(bytes, transaction.sign(&ecdsa));
+        let expected_bytes = bytes_string;
+        let actual_bytes = hex::encode(&transaction.sign(&ecdsa));
+
+        println!("Expecting {} byte(s), got {} byte(s)", 
+            expected_bytes.len(),
+            actual_bytes.len()
+        );
+
+        assert_eq!(expected_bytes, actual_bytes);
     }
 }
