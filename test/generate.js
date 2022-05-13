@@ -73,7 +73,7 @@ function randomScenario() {
 	return {
 		transaction: {
 			"data": randomBytes(1024),
-			"gas": randHexInt(0xFFFFFFFF),
+			"gasLimit": randHexInt(0xFFFFFFFF),
 			"gasPrice": randHexInt(0xFFFFFFFF),
 			"nonce": randHexInt(0xFFFFF),
 			"to": '0x' + randomBytes(20).toString('hex'),

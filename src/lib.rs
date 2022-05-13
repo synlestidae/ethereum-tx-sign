@@ -398,6 +398,7 @@ impl Transaction for AccessListTransaction {
             None => vec![],
         };
         vec![
+            Box::new(self.chain),
             Box::new(self.nonce),
             Box::new(self.gas_price),
             Box::new(self.gas),
