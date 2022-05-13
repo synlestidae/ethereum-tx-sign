@@ -465,7 +465,27 @@ mod test {
 
     #[test]
     fn test_random_access_list_transaction_001() {
-        run_signing_test::<AccessListTransaction>("./test/randomTransaction001.json");
+        run_signing_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
+    }
+
+    #[test]
+    fn test_random_access_list_transaction_002() {
+        run_signing_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
+    }
+
+    #[test]
+    fn test_random_access_list_transaction_003() {
+        run_signing_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
+    }
+
+    #[test]
+    fn test_random_legacy_001() {
+        run_signing_test::<LegacyTransaction>("./test/random_legacy_001.json");
+    }
+
+    #[test]
+    fn test_random_legacy_002() {
+        run_signing_test::<LegacyTransaction>("./test/random_legacy_002.json");
     }
 
     #[allow(warnings)]

@@ -1,11 +1,15 @@
 const Common = require('@ethereumjs/common').default;
 const { Chain, Hardfork } = require('@ethereumjs/common')
-const { AccessListEIP2930Transaction } = require('@ethereumjs/tx');
+const { AccessListEIP2930Transaction, Transaction } = require('@ethereumjs/tx');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 const { randomBytes } = require('crypto');
 
 const common = new Common({ chain: Chain.Mainnet, hardfork: Hardfork.Berlin });
+
+const LEGACY = 'legacy';
+const ACCESS_LIST = 'accesslist';
+const ACCESS_LIST_TYPE = "0x01";
 
 const params = yargs(hideBin(process.argv))
   .option('random', {
@@ -14,6 +18,14 @@ const params = yargs(hideBin(process.argv))
     description: 'If true, random transactions will be generated and signed',
 		demandOption: true,
 		default: false
+  })
+  .option('type', {
+    alias: 't',
+    type: 'string',
+    description: 'Type of transaction',
+		demandOption: true,
+		default: 'legacy',
+		choices: [LEGACY, ACCESS_LIST]
   })
   .option('number', {
     alias: 'n',
@@ -43,47 +55,62 @@ function getScenarios(params) {
 	}
 }
 
-function randomScenarios({ number }) {
+function randomScenarios({ number, type }) {
 	let scenarios = [];
 	for (let i = 0; i < number; i++) {
-		scenarios.push(randomScenario());
+		scenarios.push(randomScenario(type));
 	}
 	return scenarios;
 }
 
-function randomScenario() {
+function randomScenario(type) {
 	// TODO make this support all transactions
+	
+	if (type === LEGACY) {
+		return {
+			transaction: {
+				data: randomBytes(1024),
+				gasLimit: randHexInt(0xFFFFFFFF),
+				gasPrice: randHexInt(0xFFFFFFFF),
+				nonce: randHexInt(0xFFFFF),
+				to: '0x' + randomBytes(20).toString('hex'),
+				value: Number.MAX_SAFE_INTEGER,
+				chain: 0x01,
+			},
+			privateKey: '0x' + randomBytes(32).toString('hex')
+		};
+	} else {
+		const accessList = [];
 
-	const accessList = [];
+		for (let i = 0; i < randInt(10); i++) {
+			const address = '0x' + randomBytes(20).toString('hex');
+			const storageKeys = [];
+			
+			for (let i = 1; i < randInt(5); i++) {
+				storageKeys.push('0x' + randomBytes(32).toString('hex'));
+			}
 
-	for (let i = 0; i < randInt(10); i++) {
-		const address = '0x' + randomBytes(20).toString('hex');
-		const storageKeys = [];
-		
-		for (let i = 1; i < randInt(5); i++) {
-			storageKeys.push('0x' + randomBytes(32).toString('hex'));
+			accessList.push({
+				address,
+				storageKeys
+			});
 		}
 
-		accessList.push({
-			address,
-			storageKeys
-		});
+		return {
+			transaction: {
+				"data": randomBytes(1024),
+				"gasLimit": randHexInt(0xFFFFFFFF),
+				"gasPrice": randHexInt(0xFFFFFFFF),
+				"nonce": randHexInt(0xFFFFF),
+				"to": '0x' + randomBytes(20).toString('hex'),
+				"value": Number.MAX_SAFE_INTEGER,
+				"chain": 0x01,
+				accessList,
+				"type": ACCESS_LIST_TYPE
+			},
+			privateKey: '0x' + randomBytes(32).toString('hex')
+		};
 	}
-
-	return {
-		transaction: {
-			"data": randomBytes(1024),
-			"gasLimit": randHexInt(0xFFFFFFFF),
-			"gasPrice": randHexInt(0xFFFFFFFF),
-			"nonce": randHexInt(0xFFFFF),
-			"to": '0x' + randomBytes(20).toString('hex'),
-			"value": Number.MAX_SAFE_INTEGER,
-			"chain": 0x01,
-			accessList,
-			"type": "0x01"
-		},
-		"privateKey": '0x' + randomBytes(32).toString('hex')
-	};
 }
 
 function randHexInt(n) {
@@ -106,12 +133,17 @@ function processScenarios(scenarios) {
 
 function processScenario({ transaction, privateKey }) {
 	const originalPrivateKey = privateKey;
-	const tx = AccessListEIP2930Transaction.fromTxData(transaction, { common })
+	let tx;
+	if (transaction.type === '0x01') {
+		tx = AccessListEIP2930Transaction.fromTxData(transaction, { common });
+	} else {
+		tx = Transaction.fromTxData(transaction, { common });
+	}
+
 	privateKey = Buffer.from(
 		privateKey.replace('0x', ''),
 		'hex',
 	);
-
 
 	const signedTx = tx.sign(privateKey);
 	return {
@@ -134,6 +166,8 @@ const scenarios = getScenarios(params);
 let processedScenarios = processScenarios(scenarios);
 for (let s of processedScenarios) {
 	s.input.data = '0x' + s.input.data.toString('hex');
+	s.input.gas = s.input.gasLimit;
+	delete s.input.gasLimit;
 }
 if (processedScenarios.length === 1) {
 	processedScenarios = processedScenarios[0];
