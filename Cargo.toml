@@ -1,11 +1,11 @@
 [package]
 name = "ethereum-tx-sign"
 version = "5.0.0"
-description = "Allows you to model a raw ethereum transaction and sign it with your private key"
+description = "Allows you to sign Ethereum transactions offline."
 repository = "https://github.com/synlestidae/ethereum-tx-sign"
 license = "MIT"
-keywords = ["web3", "ethereum", "transaction", "sign"]
-authors = ["Mate Antunovic <mateATantunovic.nz>"]
+keywords = ["ethereum", "transaction", "sign", "offline"]
+authors = ["Mate Antunovic <mateATschnooty.com"]
 readme = "README.md"
 
 [dependencies]
