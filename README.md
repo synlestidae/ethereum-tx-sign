@@ -40,6 +40,7 @@ let transaction_bytes = new_transaction.sign(&ecdsa);
 
 This repository accepts contributions. Do not hesitate to raise an issue for any queries, issues, or suggestions. Pull requests must meet the following criteria:
 
+1. Target branch is development.
 1. It fixes a bug, supports a new EIP, or improves the library for >50% of all users.
 1. You have 95% unit test coverage and all tests pass.
 1. [Semantic versioning](https://semver.org/) is followed. 
