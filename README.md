@@ -55,6 +55,6 @@ all contributions.
 
 Thank you to these people for their contributions:
 
- tritone11
- rodoufuT
- victor-wei126
+* tritone11
+* rodoufuT
+* victor-wei126
