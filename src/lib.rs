@@ -83,13 +83,10 @@ fn sign_bytes<T: Transaction>(tx_type: Option<u8>, ecdsa: &EcdsaSig, t: &T) -> V
     for r in rlp.iter() {
         rlp_stream.append(r);
     }
-    match ecdsa {
-        EcdsaSig { v, s, r } => {
-            rlp_stream.append(v);
-            rlp_stream.append(r);
-            rlp_stream.append(s);
-        }
-    }
+    let EcdsaSig { v, s, r } = ecdsa;
+    rlp_stream.append(v);
+    rlp_stream.append(r);
+    rlp_stream.append(s);
 
     rlp_stream.finalize_unbounded_list();
 
@@ -135,7 +132,7 @@ impl Transaction for LegacyTransaction {
         self.chain
     }
 
-    fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>> {
+    fn rlp_parts(&self) -> Vec<Box<dyn Encodable>> {
         let to: Vec<u8> = match self.to {
             Some(ref to) => to.to_vec(),
             None => vec![],
@@ -286,7 +283,7 @@ where
     Ok(storage_keys)
 }
 
-fn storage_keys_serialize<S>(storage_keys: &Vec<[u8; 32]>, s: S) -> Result<S::Ok, S::Error>
+fn storage_keys_serialize<S>(storage_keys: &[[u8; 32]], s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
