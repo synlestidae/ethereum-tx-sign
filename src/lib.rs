@@ -74,6 +74,7 @@ pub trait Transaction {
     fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>>;
 }
 
+/// Internal function that avoids duplicating a lot of signing code
 fn sign_bytes<T: Transaction>(tx_type: Option<u8>, ecdsa: &EcdsaSig, t: &T) -> Vec<u8> {
     let mut rlp_stream = RlpStream::new();
     let rlp = t.rlp_parts();
@@ -117,10 +118,10 @@ pub struct LegacyTransaction {
     pub to: Option<[u8; 20]>,
     /// Transfered value
     pub value: u128,
-    /// Gas Price
+    /// Gas price
     #[serde(rename = "gasPrice")]
     pub gas_price: u128,
-    /// Gas amount
+    /// Gas limit
     pub gas: u128,
     /// Input data
     #[serde(serialize_with = "slice_u8_serialize")]
@@ -154,6 +155,7 @@ impl Transaction for LegacyTransaction {
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
+/// A list of addresses and storage keys that the transaction plans to access.
 pub struct Access {
     #[serde(serialize_with = "array_u8_20_serialize")]
     #[serde(deserialize_with = "array_u8_20_deserialize")]
@@ -165,6 +167,7 @@ pub struct Access {
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
+/// [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930) access list transaction.
 pub struct AccessList(Vec<Access>);
 
 impl Encodable for AccessList {
@@ -201,10 +204,10 @@ pub struct AccessListTransaction {
     pub chain: u64,
     /// Nonce
     pub nonce: u128,
-    /// Gas Price
+    /// Gas price
     #[serde(rename = "gasPrice")]
     pub gas_price: u128,
-    /// Gas amount
+    /// Gas limit
     pub gas: u128,
     /// Recipient (None when contract creation)
     #[serde(serialize_with = "option_array_u8_serialize")]
@@ -231,6 +234,8 @@ where
     }
 }
 
+/// We allow hex strings such as "0x00ffaa". The 0x prefix is not necessary when
+/// you know it is hex.
 const HEX_PREFIX: &'static str = "0x";
 
 fn slice_u8_deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
@@ -343,19 +348,7 @@ where
                     }
                 }
                 Err(err) => Err(
-                    derr::<D>(&s, err), /*match err {
-                                            hex::FromHexError::InvalidHexCharacter { c, .. } => D::Error::invalid_value(
-                                                serde::de::Unexpected::Char(c),
-                                                &"a valid hex character",
-                                            ),
-                                            hex::FromHexError::OddLength => {
-                                                D::Error::invalid_length(s.len(), &"a hex string of even length")
-                                            }
-                                            hex::FromHexError::InvalidStringLength => D::Error::invalid_length(
-                                                s.len() * 2,
-                                                &"a hex string that matches container length",
-                                            ),
-                                        }*/
+                    derr::<D>(&s, err),
                 ),
             }
         }
