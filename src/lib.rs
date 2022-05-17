@@ -1,4 +1,5 @@
-//#![deny(warnings)]
+#![deny(warnings)]
+#![deny(clippy::all)]
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
