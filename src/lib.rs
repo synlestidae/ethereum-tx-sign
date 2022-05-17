@@ -136,14 +136,14 @@ impl Transaction for LegacyTransaction {
 
     fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>> {
         let to: Vec<u8> = match self.to {
-            Some(ref to) => to.iter().cloned().collect(),
+            Some(ref to) => to.to_vec(),
             None => vec![],
         };
         vec![
             Box::new(self.nonce),
             Box::new(self.gas_price),
             Box::new(self.gas),
-            Box::new(to.clone()),
+            Box::new(to),
             Box::new(self.value),
             Box::new(self.data.clone()),
         ]
@@ -176,7 +176,7 @@ impl Encodable for AccessList {
         rlp_stream.begin_unbounded_list();
 
         for access in self.0.iter() {
-            let address_bytes: Vec<u8> = access.address.iter().cloned().collect();
+            let address_bytes: Vec<u8> = access.address.to_vec();
 
             rlp_stream.begin_unbounded_list();
             rlp_stream.append(&address_bytes);
@@ -185,7 +185,7 @@ impl Encodable for AccessList {
             {
                 rlp_stream.begin_unbounded_list();
                 for storage_key in access.storage_keys.iter() {
-                    let storage_key_bytes: Vec<u8> = storage_key.iter().cloned().collect();
+                    let storage_key_bytes: Vec<u8> = storage_key.to_vec();
                     rlp_stream.append(&storage_key_bytes);
                 }
                 rlp_stream.finalize_unbounded_list();
@@ -236,7 +236,7 @@ where
 
 /// We allow hex strings such as "0x00ffaa". The 0x prefix is not necessary when
 /// you know it is hex.
-const HEX_PREFIX: &'static str = "0x";
+const HEX_PREFIX: &str = "0x";
 
 fn slice_u8_deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
 where
@@ -301,7 +301,7 @@ where
     S: serde::Serializer,
 {
     s.serialize_str(&hex::encode(
-        storage_keys.iter().cloned().collect::<Vec<u8>>(),
+        storage_keys,
     ))
 }
 
@@ -324,7 +324,7 @@ where
     const TO_LEN: usize = 20;
     let s_option: Option<String> = Option::deserialize(deserializer)?;
     match s_option {
-        None => return Ok(None),
+        None => Ok(None),
         Some(s) => {
             let s = if s.starts_with(HEX_PREFIX) {
                 s.replace(HEX_PREFIX, "")
@@ -374,7 +374,7 @@ fn slice_u8_serialize<S>(slice: &[u8], s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
-    s.serialize_str(&format!("{}", hex::encode(slice)))
+    s.serialize_str(&hex::encode(slice))
 }
 
 const EIP_2930_TYPE: u8 = 0x01;
@@ -450,7 +450,7 @@ pub fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod test {
     use crate::{AccessListTransaction, EcdsaSig, LegacyTransaction, Transaction};
-    use ethereum_types::H256;
+    
     use serde_json;
     use std::collections::HashMap;
     use std::fs::File;
