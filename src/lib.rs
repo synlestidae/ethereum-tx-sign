@@ -388,7 +388,7 @@ impl Transaction for AccessListTransaction {
     #[allow(warnings)]
     fn rlp_parts(&self) -> Vec<Box<dyn Encodable>> {
         let to: Vec<u8> = match self.to {
-            Some(ref to) => to.iter().cloned().collect(),
+            Some(ref to) => to.to_vec(),
             None => vec![],
         };
         vec![
@@ -396,7 +396,7 @@ impl Transaction for AccessListTransaction {
             Box::new(self.nonce),
             Box::new(self.gas_price),
             Box::new(self.gas),
-            Box::new(to.clone()),
+            Box::new(to),
             Box::new(self.value),
             Box::new(self.data.clone()),
             Box::new(self.access_list.clone()),
