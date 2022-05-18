@@ -4,6 +4,7 @@ const { AccessListEIP2930Transaction, Transaction } = require('@ethereumjs/tx');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 const { randomBytes } = require('crypto');
+const fs = require('fs');
 
 const common = new Common({ chain: Chain.Mainnet, hardfork: Hardfork.Berlin });
 
@@ -47,8 +48,7 @@ function getScenarios(params) {
 	if (params.random) {
 		return randomScenarios(params);
 	} else if (params.file) {
-		console.error('Sorry, --file is not yet implemented');
-		process.exit(1);
+		return fileScenarios(params);
 	} else {
 		console.error('Either --file or --random is required');
 		process.exit(1);
@@ -61,6 +61,11 @@ function randomScenarios({ number, type }) {
 		scenarios.push(randomScenario(type));
 	}
 	return scenarios;
+}
+
+function fileScenarios({ file }) {
+	const contents = JSON.parse(fs.readFileSync(file, 'utf8'));
+	return Array.isArray(contents) ? contents : [contents];
 }
 
 function randomScenario(type) {
@@ -131,7 +136,8 @@ function processScenarios(scenarios) {
 	return processedScenarios;
 }
 
-function processScenario({ transaction, privateKey }) {
+function processScenario(params) {
+	let { transaction, privateKey } = params;
 	const originalPrivateKey = privateKey;
 	let tx;
 	if (transaction.type === '0x01') {
