@@ -72,7 +72,7 @@ pub trait Transaction {
     /// Return the fields of the transaction as a list of RLP-encodable
     /// parts. The parts must follow the order that they will be encoded,
     /// hashed, or signed.
-    fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>>;
+    fn rlp_parts(&self) -> Vec<Box<dyn Encodable>>;
 }
 
 /// Internal function that avoids duplicating a lot of signing code
@@ -165,7 +165,7 @@ pub struct Access {
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
-/// [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930) access list transaction.
+/// [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930) access list.
 pub struct AccessList(Vec<Access>);
 
 impl Encodable for AccessList {
@@ -197,6 +197,7 @@ impl Encodable for AccessList {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+/// [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930) access list transaction.
 pub struct AccessListTransaction {
     /// Chain ID
     pub chain: u64,
@@ -412,6 +413,7 @@ impl TypedTransaction for AccessListTransaction {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// Represents an [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) signature.
 pub struct EcdsaSig {
     pub v: u64,
     #[serde(serialize_with = "slice_u8_serialize")]
@@ -437,7 +439,7 @@ impl EcdsaSig {
     }
 }
 
-pub fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
+fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
     let mut hasher = Keccak::v256();
     hasher.update(bytes);
     let mut resp: [u8; 32] = Default::default();
