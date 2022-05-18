@@ -481,9 +481,19 @@ mod test {
         run_signing_test::<LegacyTransaction>("./test/random_legacy_002.json");
     }
 
+    #[test]
+    fn test_zero_legacy_001() {
+        run_signing_test::<LegacyTransaction>("./test/zero_legacy_001.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_001() {
+        run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
+    }
+
     #[allow(warnings)]
     fn run_signing_test<T: Transaction + serde::de::DeserializeOwned>(path: &str) {
-        let mut file = File::open(path).unwrap();
+        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
 
