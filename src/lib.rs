@@ -1,4 +1,5 @@
-//#![deny(warnings)]
+#![deny(warnings)]
+#![deny(clippy::all)]
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -71,9 +72,10 @@ pub trait Transaction {
     /// Return the fields of the transaction as a list of RLP-encodable
     /// parts. The parts must follow the order that they will be encoded,
     /// hashed, or signed.
-    fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>>;
+    fn rlp_parts(&self) -> Vec<Box<dyn Encodable>>;
 }
 
+/// Internal function that avoids duplicating a lot of signing code
 fn sign_bytes<T: Transaction>(tx_type: Option<u8>, ecdsa: &EcdsaSig, t: &T) -> Vec<u8> {
     let mut rlp_stream = RlpStream::new();
     let rlp = t.rlp_parts();
@@ -81,13 +83,10 @@ fn sign_bytes<T: Transaction>(tx_type: Option<u8>, ecdsa: &EcdsaSig, t: &T) -> V
     for r in rlp.iter() {
         rlp_stream.append(r);
     }
-    match ecdsa {
-        EcdsaSig { v, s, r } => {
-            rlp_stream.append(v);
-            rlp_stream.append(r);
-            rlp_stream.append(s);
-        }
-    }
+    let EcdsaSig { v, s, r } = ecdsa;
+    rlp_stream.append(v);
+    rlp_stream.append(r);
+    rlp_stream.append(s);
 
     rlp_stream.finalize_unbounded_list();
 
@@ -117,10 +116,10 @@ pub struct LegacyTransaction {
     pub to: Option<[u8; 20]>,
     /// Transfered value
     pub value: u128,
-    /// Gas Price
+    /// Gas price
     #[serde(rename = "gasPrice")]
     pub gas_price: u128,
-    /// Gas amount
+    /// Gas limit
     pub gas: u128,
     /// Input data
     #[serde(serialize_with = "slice_u8_serialize")]
@@ -133,16 +132,16 @@ impl Transaction for LegacyTransaction {
         self.chain
     }
 
-    fn rlp_parts<'a>(&'a self) -> Vec<Box<dyn Encodable>> {
+    fn rlp_parts(&self) -> Vec<Box<dyn Encodable>> {
         let to: Vec<u8> = match self.to {
-            Some(ref to) => to.iter().cloned().collect(),
+            Some(ref to) => to.to_vec(),
             None => vec![],
         };
         vec![
             Box::new(self.nonce),
             Box::new(self.gas_price),
             Box::new(self.gas),
-            Box::new(to.clone()),
+            Box::new(to),
             Box::new(self.value),
             Box::new(self.data.clone()),
         ]
@@ -154,6 +153,7 @@ impl Transaction for LegacyTransaction {
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
+/// A list of addresses and storage keys that the transaction plans to access.
 pub struct Access {
     #[serde(serialize_with = "array_u8_20_serialize")]
     #[serde(deserialize_with = "array_u8_20_deserialize")]
@@ -165,6 +165,7 @@ pub struct Access {
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
+/// [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930) access list.
 pub struct AccessList(Vec<Access>);
 
 impl Encodable for AccessList {
@@ -173,7 +174,7 @@ impl Encodable for AccessList {
         rlp_stream.begin_unbounded_list();
 
         for access in self.0.iter() {
-            let address_bytes: Vec<u8> = access.address.iter().cloned().collect();
+            let address_bytes: Vec<u8> = access.address.to_vec();
 
             rlp_stream.begin_unbounded_list();
             rlp_stream.append(&address_bytes);
@@ -182,7 +183,7 @@ impl Encodable for AccessList {
             {
                 rlp_stream.begin_unbounded_list();
                 for storage_key in access.storage_keys.iter() {
-                    let storage_key_bytes: Vec<u8> = storage_key.iter().cloned().collect();
+                    let storage_key_bytes: Vec<u8> = storage_key.to_vec();
                     rlp_stream.append(&storage_key_bytes);
                 }
                 rlp_stream.finalize_unbounded_list();
@@ -196,15 +197,16 @@ impl Encodable for AccessList {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+/// [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930) access list transaction.
 pub struct AccessListTransaction {
     /// Chain ID
     pub chain: u64,
     /// Nonce
     pub nonce: u128,
-    /// Gas Price
+    /// Gas price
     #[serde(rename = "gasPrice")]
     pub gas_price: u128,
-    /// Gas amount
+    /// Gas limit
     pub gas: u128,
     /// Recipient (None when contract creation)
     #[serde(serialize_with = "option_array_u8_serialize")]
@@ -231,7 +233,9 @@ where
     }
 }
 
-const HEX_PREFIX: &'static str = "0x";
+/// We allow hex strings such as "0x00ffaa". The 0x prefix is not necessary when
+/// you know it is hex.
+const HEX_PREFIX: &str = "0x";
 
 fn slice_u8_deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
 where
@@ -280,7 +284,7 @@ where
     Ok(storage_keys)
 }
 
-fn storage_keys_serialize<S>(storage_keys: &Vec<[u8; 32]>, s: S) -> Result<S::Ok, S::Error>
+fn storage_keys_serialize<S>(storage_keys: &[[u8; 32]], s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
@@ -296,7 +300,7 @@ where
     S: serde::Serializer,
 {
     s.serialize_str(&hex::encode(
-        storage_keys.iter().cloned().collect::<Vec<u8>>(),
+        storage_keys,
     ))
 }
 
@@ -319,7 +323,7 @@ where
     const TO_LEN: usize = 20;
     let s_option: Option<String> = Option::deserialize(deserializer)?;
     match s_option {
-        None => return Ok(None),
+        None => Ok(None),
         Some(s) => {
             let s = if s.starts_with(HEX_PREFIX) {
                 s.replace(HEX_PREFIX, "")
@@ -343,19 +347,7 @@ where
                     }
                 }
                 Err(err) => Err(
-                    derr::<D>(&s, err), /*match err {
-                                            hex::FromHexError::InvalidHexCharacter { c, .. } => D::Error::invalid_value(
-                                                serde::de::Unexpected::Char(c),
-                                                &"a valid hex character",
-                                            ),
-                                            hex::FromHexError::OddLength => {
-                                                D::Error::invalid_length(s.len(), &"a hex string of even length")
-                                            }
-                                            hex::FromHexError::InvalidStringLength => D::Error::invalid_length(
-                                                s.len() * 2,
-                                                &"a hex string that matches container length",
-                                            ),
-                                        }*/
+                    derr::<D>(&s, err),
                 ),
             }
         }
@@ -381,7 +373,7 @@ fn slice_u8_serialize<S>(slice: &[u8], s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
-    s.serialize_str(&format!("{}", hex::encode(slice)))
+    s.serialize_str(&hex::encode(slice))
 }
 
 const EIP_2930_TYPE: u8 = 0x01;
@@ -394,7 +386,7 @@ impl Transaction for AccessListTransaction {
     #[allow(warnings)]
     fn rlp_parts(&self) -> Vec<Box<dyn Encodable>> {
         let to: Vec<u8> = match self.to {
-            Some(ref to) => to.iter().cloned().collect(),
+            Some(ref to) => to.to_vec(),
             None => vec![],
         };
         vec![
@@ -402,7 +394,7 @@ impl Transaction for AccessListTransaction {
             Box::new(self.nonce),
             Box::new(self.gas_price),
             Box::new(self.gas),
-            Box::new(to.clone()),
+            Box::new(to),
             Box::new(self.value),
             Box::new(self.data.clone()),
             Box::new(self.access_list.clone()),
@@ -421,6 +413,7 @@ impl TypedTransaction for AccessListTransaction {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// Represents an [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) signature.
 pub struct EcdsaSig {
     pub v: u64,
     #[serde(serialize_with = "slice_u8_serialize")]
@@ -446,7 +439,7 @@ impl EcdsaSig {
     }
 }
 
-pub fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
+fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
     let mut hasher = Keccak::v256();
     hasher.update(bytes);
     let mut resp: [u8; 32] = Default::default();
@@ -457,7 +450,7 @@ pub fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod test {
     use crate::{AccessListTransaction, EcdsaSig, LegacyTransaction, Transaction};
-    use ethereum_types::H256;
+    
     use serde_json;
     use std::collections::HashMap;
     use std::fs::File;
