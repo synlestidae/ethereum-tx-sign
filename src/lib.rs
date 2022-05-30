@@ -390,7 +390,7 @@ impl Transaction for AccessListTransaction {
             None => vec![],
         };
         vec![
-            Box::new(self.chain), // this is giving 0x when it should be 0x0
+            if self.chain != 0 { Box::new(self.chain) } else { Box::new(Zero{}) }, // this is giving 0x when it should be 0x0
             Box::new(self.nonce),
             Box::new(self.gas_price),
             Box::new(self.gas),
@@ -445,6 +445,15 @@ fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
     let mut resp: [u8; 32] = Default::default();
     hasher.finalize(&mut resp);
     resp
+}
+
+
+struct Zero;
+
+impl rlp::Encodable for Zero {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.append_raw(&[0u8], 1);
+    }
 }
 
 #[cfg(test)]
