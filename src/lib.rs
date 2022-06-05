@@ -299,9 +299,7 @@ fn array_u8_20_serialize<S>(storage_keys: &[u8; 20], s: S) -> Result<S::Ok, S::E
 where
     S: serde::Serializer,
 {
-    s.serialize_str(&hex::encode(
-        storage_keys,
-    ))
+    s.serialize_str(&hex::encode(storage_keys))
 }
 
 fn array_u8_20_deserialize<'de, D>(d: D) -> Result<[u8; 20], D::Error>
@@ -346,9 +344,7 @@ where
                         ))
                     }
                 }
-                Err(err) => Err(
-                    derr::<D>(&s, err),
-                ),
+                Err(err) => Err(derr::<D>(&s, err)),
             }
         }
     }
@@ -447,11 +443,10 @@ fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
     resp
 }
 
-
 #[cfg(test)]
 mod test {
     use crate::{AccessListTransaction, EcdsaSig, LegacyTransaction, Transaction};
-    
+
     use serde_json;
     use std::collections::HashMap;
     use std::fs::File;
@@ -514,7 +509,8 @@ mod test {
         let actual_bytes = transaction.sign(&ecdsa);
         let actual_bytes_string = hex::encode(&actual_bytes);
 
-        println!("Expecting {} byte(s), got {} byte(s)", 
+        println!(
+            "Expecting {} byte(s), got {} byte(s)",
             expected_bytes_string.len(),
             actual_bytes_string.len()
         );
