@@ -452,7 +452,6 @@ mod test {
     use std::fs::File;
     use std::io::Read;
 
-
     #[test]
     fn test_random_access_list_transaction_001() {
         run_signing_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
@@ -490,20 +489,35 @@ mod test {
 
     #[test]
     fn test_serde_random_access_list_transaction_001() {
-        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
+        run_serialization_deserialization_test::<AccessListTransaction>(
+            "./test/random_eip_2930_001.json",
+        );
     }
 
     #[test]
     fn test_serde_random_access_list_transaction_002() {
-        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
+        run_serialization_deserialization_test::<AccessListTransaction>(
+            "./test/random_eip_2930_002.json",
+        );
     }
 
     #[test]
     fn test_serde_random_access_list_transaction_003() {
-        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
+        run_serialization_deserialization_test::<AccessListTransaction>(
+            "./test/random_eip_2930_003.json",
+        );
     }
 
-    fn run_serialization_deserialization_test<T: Transaction + serde::de::DeserializeOwned + std::fmt::Debug + serde::Serialize + serde::de::DeserializeOwned + std::cmp::Eq>(path: &str) {
+    fn run_serialization_deserialization_test<
+        T: Transaction
+            + serde::de::DeserializeOwned
+            + std::fmt::Debug
+            + serde::Serialize
+            + serde::de::DeserializeOwned
+            + std::cmp::Eq,
+    >(
+        path: &str,
+    ) {
         let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
@@ -512,7 +526,10 @@ mod test {
         let transaction_original: T = serde_json::from_value(values["input"].clone()).unwrap();
         let transaction_string = serde_json::to_string(&transaction_original).unwrap();
 
-        assert_eq!(transaction_original, serde_json::from_str(&transaction_string).unwrap())
+        assert_eq!(
+            transaction_original,
+            serde_json::from_str(&transaction_string).unwrap()
+        )
     }
 
     fn run_signing_test<T: Transaction + serde::de::DeserializeOwned>(path: &str) {
