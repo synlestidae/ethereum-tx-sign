@@ -104,7 +104,7 @@ pub trait TypedTransaction: Transaction {
 }
 
 /// Description of a Transaction, pending or in the chain.
-#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct LegacyTransaction {
     /// Chain ID
     pub chain: u64,
@@ -152,7 +152,7 @@ impl Transaction for LegacyTransaction {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 /// A list of addresses and storage keys that the transaction plans to access.
 pub struct Access {
     #[serde(serialize_with = "array_u8_20_serialize")]
@@ -164,7 +164,7 @@ pub struct Access {
     pub storage_keys: Vec<[u8; 32]>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 /// [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930) access list.
 pub struct AccessList(Vec<Access>);
 
@@ -196,7 +196,7 @@ impl Encodable for AccessList {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 /// [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930) access list transaction.
 pub struct AccessListTransaction {
     /// Chain ID
@@ -299,9 +299,7 @@ fn array_u8_20_serialize<S>(storage_keys: &[u8; 20], s: S) -> Result<S::Ok, S::E
 where
     S: serde::Serializer,
 {
-    s.serialize_str(&hex::encode(
-        storage_keys,
-    ))
+    s.serialize_str(&hex::encode(storage_keys))
 }
 
 fn array_u8_20_deserialize<'de, D>(d: D) -> Result<[u8; 20], D::Error>
@@ -346,9 +344,7 @@ where
                         ))
                     }
                 }
-                Err(err) => Err(
-                    derr::<D>(&s, err),
-                ),
+                Err(err) => Err(derr::<D>(&s, err)),
             }
         }
     }
@@ -412,7 +408,7 @@ impl TypedTransaction for AccessListTransaction {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 /// Represents an [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) signature.
 pub struct EcdsaSig {
     pub v: u64,
@@ -450,11 +446,12 @@ fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod test {
     use crate::{AccessListTransaction, EcdsaSig, LegacyTransaction, Transaction};
-    
+
     use serde_json;
     use std::collections::HashMap;
     use std::fs::File;
     use std::io::Read;
+
 
     #[test]
     fn test_random_access_list_transaction_001() {
@@ -481,30 +478,65 @@ mod test {
         run_signing_test::<LegacyTransaction>("./test/random_legacy_002.json");
     }
 
-    #[allow(warnings)]
+    #[test]
+    fn test_zero_legacy_001() {
+        run_signing_test::<LegacyTransaction>("./test/zero_legacy_001.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_001() {
+        run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
+    }
+
+    #[test]
+    fn test_serde_random_access_list_transaction_001() {
+        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
+    }
+
+    #[test]
+    fn test_serde_random_access_list_transaction_002() {
+        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
+    }
+
+    #[test]
+    fn test_serde_random_access_list_transaction_003() {
+        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
+    }
+
+    fn run_serialization_deserialization_test<T: Transaction + serde::de::DeserializeOwned + std::fmt::Debug + serde::Serialize + serde::de::DeserializeOwned + std::cmp::Eq>(path: &str) {
+        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
+        let mut f_string = String::new();
+        file.read_to_string(&mut f_string).unwrap();
+
+        let values: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
+        let transaction_original: T = serde_json::from_value(values["input"].clone()).unwrap();
+        let transaction_string = serde_json::to_string(&transaction_original).unwrap();
+
+        assert_eq!(transaction_original, serde_json::from_str(&transaction_string).unwrap())
+    }
+
     fn run_signing_test<T: Transaction + serde::de::DeserializeOwned>(path: &str) {
-        let mut file = File::open(path).unwrap();
+        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
 
         let values: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
 
         let transaction: T = serde_json::from_value(values["input"].clone()).unwrap();
-        let private_key_string: String =
-            serde_json::from_value(values["privateKey"].clone()).unwrap();
         let ecdsa: EcdsaSig = serde_json::from_value(values["output"].clone()).unwrap();
-        let mut bytes_string: String =
+        let expected_bytes_string: String =
             serde_json::from_value(values["output"]["bytes"].clone()).unwrap();
-        bytes_string = bytes_string.replace("0x", "");
+        let expected_bytes_string = expected_bytes_string.replace("0x", "");
 
-        let expected_bytes = bytes_string;
-        let actual_bytes = hex::encode(&transaction.sign(&ecdsa));
+        let actual_bytes = transaction.sign(&ecdsa);
+        let actual_bytes_string = hex::encode(&actual_bytes);
 
-        println!("Expecting {} byte(s), got {} byte(s)", 
-            expected_bytes.len(),
-            actual_bytes.len()
+        println!(
+            "Expecting {} byte(s), got {} byte(s)",
+            expected_bytes_string.len(),
+            actual_bytes_string.len()
         );
 
-        assert_eq!(expected_bytes, actual_bytes);
+        assert_eq!(expected_bytes_string, actual_bytes_string);
     }
 }
