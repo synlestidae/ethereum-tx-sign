@@ -1,11 +1,11 @@
 [package]
 name = "ethereum-tx-sign"
-version = "4.0.0"
-description = "Allows you to model a raw ethereum transaction and sign it with your private key"
+version = "5.0.0"
+description = "Allows you to sign Ethereum transactions offline."
 repository = "https://github.com/synlestidae/ethereum-tx-sign"
 license = "MIT"
-keywords = ["web3", "ethereum", "transaction", "sign"]
-authors = ["Mate Antunovic <mateATantunovic.nz>"]
+keywords = ["ethereum", "transaction", "sign", "offline"]
+authors = ["Mate Antunovic <mateATschnooty.com"]
 readme = "README.md"
 
 [dependencies]
@@ -15,6 +15,8 @@ tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 secp256k1 = {version = "0.22.1", features = ["recovery"] }
 rlp = "0.5.1"
 num-traits = "0.2"
+bytes = "^1"
+hex = "0.4.3"
 
 [dev-dependencies]
 ethereum-types= "0.13"

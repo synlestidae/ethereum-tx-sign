@@ -1,17 +1,542 @@
 #![deny(warnings)]
+#![deny(clippy::all)]
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate bytes;
+extern crate hex;
+extern crate num_traits;
 extern crate rlp;
 extern crate secp256k1;
 extern crate tiny_keccak;
-extern crate num_traits;
 
 #[cfg(test)]
 extern crate ethereum_types;
 #[cfg(test)]
 extern crate serde_json;
 
-mod raw_transaction;
+use rlp::{Encodable, RlpStream};
+use secp256k1::{Message, Secp256k1, SecretKey};
+use serde::de::Error;
+use serde::ser::SerializeSeq;
+use serde::Deserialize;
+use std::convert::TryInto;
+use tiny_keccak::{Hasher, Keccak};
 
-pub use self::raw_transaction::RawTransaction;
+/// Ethereum transaction
+pub trait Transaction {
+    /// [EIP-155](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md) chain ID
+    fn chain(&self) -> u64;
+
+    /// Compute the unique transaction hash
+    fn hash(&self) -> [u8; 32] {
+        let rlp = self.rlp_parts();
+        let mut rlp_stream = RlpStream::new();
+        rlp_stream.begin_unbounded_list();
+        for r in rlp.iter() {
+            rlp_stream.append(r);
+        }
+        rlp_stream.append(&self.chain());
+        rlp_stream.append_raw(&[0x80], 1);
+        rlp_stream.append_raw(&[0x80], 1);
+        rlp_stream.finalize_unbounded_list();
+        keccak256_hash(&rlp_stream.out())
+    }
+
+    /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction
+    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
+        let hash = self.hash();
+
+        EcdsaSig::generate(hash, private_key, self.chain())
+    }
+
+    /// Sign and encode this transaction using the given ECDSA signature.
+    /// Signing is done in two steps. Example:
+    /// ```
+    /// use ethereum_tx_sign::{LegacyTransaction, Transaction};
+    ///
+    /// let tx = LegacyTransaction {
+    ///     chain: 1,
+    ///     nonce: 0,
+    ///     to: Some([0x45; 20]),
+    ///     value: 1000,
+    ///     gas_price: 20 * 10u128.pow(9),
+    ///     gas: 21000,
+    ///     data: vec![]
+    /// };
+    /// let ecdsa = tx.ecdsa(&vec![0x35; 32]);
+    /// let tx_bytes = tx.sign(&ecdsa);
+    /// ```
+    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8>;
+
+    /// Return the fields of the transaction as a list of RLP-encodable
+    /// parts. The parts must follow the order that they will be encoded,
+    /// hashed, or signed.
+    fn rlp_parts(&self) -> Vec<Box<dyn Encodable>>;
+}
+
+/// Internal function that avoids duplicating a lot of signing code
+fn sign_bytes<T: Transaction>(tx_type: Option<u8>, ecdsa: &EcdsaSig, t: &T) -> Vec<u8> {
+    let mut rlp_stream = RlpStream::new();
+    let rlp = t.rlp_parts();
+    rlp_stream.begin_unbounded_list();
+    for r in rlp.iter() {
+        rlp_stream.append(r);
+    }
+    let EcdsaSig { v, s, r } = ecdsa;
+    rlp_stream.append(v);
+    rlp_stream.append(r);
+    rlp_stream.append(s);
+
+    rlp_stream.finalize_unbounded_list();
+
+    let mut bytes_out = rlp_stream.out().to_vec();
+    if let Some(t) = tx_type {
+        bytes_out.insert(0usize, t);
+    }
+    bytes_out
+}
+
+/// EIP-2817 Typed Transaction Envelope
+pub trait TypedTransaction: Transaction {
+    /// Returns the transaction type byte
+    fn transaction_type(&self) -> u8;
+}
+
+/// Description of a Transaction, pending or in the chain.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct LegacyTransaction {
+    /// Chain ID
+    pub chain: u64,
+    /// Nonce
+    pub nonce: u128,
+    /// Recipient (None when contract creation)
+    #[serde(serialize_with = "option_array_u8_serialize")]
+    #[serde(deserialize_with = "option_array_u8_deserialize")]
+    pub to: Option<[u8; 20]>,
+    /// Transfered value
+    pub value: u128,
+    /// Gas price
+    #[serde(rename = "gasPrice")]
+    pub gas_price: u128,
+    /// Gas limit
+    pub gas: u128,
+    /// Input data
+    #[serde(serialize_with = "slice_u8_serialize")]
+    #[serde(deserialize_with = "slice_u8_deserialize")]
+    pub data: Vec<u8>,
+}
+
+impl Transaction for LegacyTransaction {
+    fn chain(&self) -> u64 {
+        self.chain
+    }
+
+    fn rlp_parts(&self) -> Vec<Box<dyn Encodable>> {
+        let to: Vec<u8> = match self.to {
+            Some(ref to) => to.to_vec(),
+            None => vec![],
+        };
+        vec![
+            Box::new(self.nonce),
+            Box::new(self.gas_price),
+            Box::new(self.gas),
+            Box::new(to),
+            Box::new(self.value),
+            Box::new(self.data.clone()),
+        ]
+    }
+
+    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
+        sign_bytes(None, ecdsa, self)
+    }
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+/// A list of addresses and storage keys that the transaction plans to access.
+pub struct Access {
+    #[serde(serialize_with = "array_u8_20_serialize")]
+    #[serde(deserialize_with = "array_u8_20_deserialize")]
+    pub address: [u8; 20],
+    #[serde(serialize_with = "storage_keys_serialize")]
+    #[serde(deserialize_with = "storage_keys_deserialize")]
+    #[serde(rename = "storageKeys")]
+    pub storage_keys: Vec<[u8; 32]>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+/// [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930) access list.
+pub struct AccessList(Vec<Access>);
+
+impl Encodable for AccessList {
+    /// Encodes the access list according to [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930).
+    fn rlp_append(&self, rlp_stream: &mut RlpStream) {
+        rlp_stream.begin_unbounded_list();
+
+        for access in self.0.iter() {
+            let address_bytes: Vec<u8> = access.address.to_vec();
+
+            rlp_stream.begin_unbounded_list();
+            rlp_stream.append(&address_bytes);
+
+            // append the list of keys
+            {
+                rlp_stream.begin_unbounded_list();
+                for storage_key in access.storage_keys.iter() {
+                    let storage_key_bytes: Vec<u8> = storage_key.to_vec();
+                    rlp_stream.append(&storage_key_bytes);
+                }
+                rlp_stream.finalize_unbounded_list();
+            }
+
+            rlp_stream.finalize_unbounded_list();
+        }
+
+        rlp_stream.finalize_unbounded_list();
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930) access list transaction.
+pub struct AccessListTransaction {
+    /// Chain ID
+    pub chain: u64,
+    /// Nonce
+    pub nonce: u128,
+    /// Gas price
+    #[serde(rename = "gasPrice")]
+    pub gas_price: u128,
+    /// Gas limit
+    pub gas: u128,
+    /// Recipient (None when contract creation)
+    #[serde(serialize_with = "option_array_u8_serialize")]
+    #[serde(deserialize_with = "option_array_u8_deserialize")]
+    pub to: Option<[u8; 20]>,
+    /// Transfered value
+    pub value: u128,
+    /// Input data
+    #[serde(serialize_with = "slice_u8_serialize")]
+    #[serde(deserialize_with = "slice_u8_deserialize")]
+    pub data: Vec<u8>,
+    /// List of addresses and storage keys the transaction plans to access
+    #[serde(rename = "accessList")]
+    pub access_list: AccessList,
+}
+
+fn option_array_u8_serialize<S>(to: &Option<[u8; 20]>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match to {
+        Some(ref array) => slice_u8_serialize(array, s),
+        None => s.serialize_none(),
+    }
+}
+
+/// We allow hex strings such as "0x00ffaa". The 0x prefix is not necessary when
+/// you know it is hex.
+const HEX_PREFIX: &str = "0x";
+
+fn slice_u8_deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: String = String::deserialize(deserializer)?;
+    let s = if s.starts_with(HEX_PREFIX) {
+        s.replace(HEX_PREFIX, "")
+    } else {
+        s
+    };
+    match hex::decode(&s) {
+        Ok(s) => Ok(s),
+        Err(err) => Err(derr::<D>(&s, err)),
+    }
+}
+
+fn storage_keys_deserialize<'de, D>(deserializer: D) -> Result<Vec<[u8; 32]>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let storage_key_vec: Vec<String> = Vec::deserialize(deserializer)?;
+    let mut storage_keys = vec![];
+    for storage_key in storage_key_vec.into_iter() {
+        let s = if storage_key.starts_with(HEX_PREFIX) {
+            storage_key.replace(HEX_PREFIX, "")
+        } else {
+            storage_key
+        };
+        let s = match hex::decode(&s) {
+            Ok(s) => s,
+            Err(err) => return Err(derr::<D>(&s, err)),
+        };
+        let s_len = s.len();
+        let arr = match s.try_into() {
+            Ok(a) => a,
+            Err(_) => {
+                return Err(D::Error::invalid_length(
+                    s_len,
+                    &"a hex string of length 20",
+                ))
+            }
+        };
+        storage_keys.push(arr) // TODO
+    }
+    Ok(storage_keys)
+}
+
+fn storage_keys_serialize<S>(storage_keys: &[[u8; 32]], s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let mut seq = s.serialize_seq(Some(storage_keys.len()))?;
+    for storage_key in storage_keys.iter() {
+        seq.serialize_element(&hex::encode(storage_key))?;
+    }
+    seq.end()
+}
+
+fn array_u8_20_serialize<S>(storage_keys: &[u8; 20], s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    s.serialize_str(&hex::encode(storage_keys))
+}
+
+fn array_u8_20_deserialize<'de, D>(d: D) -> Result<[u8; 20], D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    match option_array_u8_deserialize(d)? {
+        Some(a) => Ok(a),
+        None => Err(
+            D::Error::invalid_value(serde::de::Unexpected::Option, &"a hex string of length 20"), // TODO is error accurate?
+        ),
+    }
+}
+
+fn option_array_u8_deserialize<'de, D>(deserializer: D) -> Result<Option<[u8; 20]>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    const TO_LEN: usize = 20;
+    let s_option: Option<String> = Option::deserialize(deserializer)?;
+    match s_option {
+        None => Ok(None),
+        Some(s) => {
+            let s = if s.starts_with(HEX_PREFIX) {
+                s.replace(HEX_PREFIX, "")
+            } else {
+                s
+            };
+            match hex::decode(&s) {
+                Ok(s) => {
+                    let mut to = [0u8; 20];
+                    if s.len() == TO_LEN {
+                        for (i, b) in s.iter().enumerate() {
+                            to[i] = *b;
+                        }
+
+                        Ok(Some(to))
+                    } else {
+                        Err(D::Error::invalid_length(
+                            s.len(),
+                            &"a hex string of length 20",
+                        ))
+                    }
+                }
+                Err(err) => Err(derr::<D>(&s, err)),
+            }
+        }
+    }
+}
+
+fn derr<'de, D: serde::Deserializer<'de>>(s: &str, err: hex::FromHexError) -> D::Error {
+    println!("DERR: {}", s);
+    match err {
+        hex::FromHexError::InvalidHexCharacter { c, .. } => {
+            D::Error::invalid_value(serde::de::Unexpected::Char(c), &"a valid hex character")
+        }
+        hex::FromHexError::OddLength => {
+            D::Error::invalid_length(s.len(), &"a hex string of even length")
+        }
+        hex::FromHexError::InvalidStringLength => {
+            D::Error::invalid_length(s.len(), &"a hex string that matches container length")
+        }
+    }
+}
+
+fn slice_u8_serialize<S>(slice: &[u8], s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    s.serialize_str(&hex::encode(slice))
+}
+
+const EIP_2930_TYPE: u8 = 0x01;
+
+impl Transaction for AccessListTransaction {
+    fn chain(&self) -> u64 {
+        self.chain
+    }
+
+    #[allow(warnings)]
+    fn rlp_parts(&self) -> Vec<Box<dyn Encodable>> {
+        let to: Vec<u8> = match self.to {
+            Some(ref to) => to.to_vec(),
+            None => vec![],
+        };
+        vec![
+            Box::new(self.chain),
+            Box::new(self.nonce),
+            Box::new(self.gas_price),
+            Box::new(self.gas),
+            Box::new(to),
+            Box::new(self.value),
+            Box::new(self.data.clone()),
+            Box::new(self.access_list.clone()),
+        ]
+    }
+
+    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
+        sign_bytes(Some(EIP_2930_TYPE), ecdsa, self)
+    }
+}
+
+impl TypedTransaction for AccessListTransaction {
+    fn transaction_type(&self) -> u8 {
+        EIP_2930_TYPE
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+/// Represents an [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) signature.
+pub struct EcdsaSig {
+    pub v: u64,
+    #[serde(serialize_with = "slice_u8_serialize")]
+    #[serde(deserialize_with = "slice_u8_deserialize")]
+    pub r: Vec<u8>,
+    #[serde(serialize_with = "slice_u8_serialize")]
+    #[serde(deserialize_with = "slice_u8_deserialize")]
+    pub s: Vec<u8>,
+}
+
+impl EcdsaSig {
+    pub fn generate(hash: [u8; 32], private_key: &[u8], chain_id: u64) -> EcdsaSig {
+        let s = Secp256k1::signing_only();
+        let msg = Message::from_slice(&hash).unwrap();
+        let key = SecretKey::from_slice(private_key).unwrap();
+        let (v, sig_bytes) = s.sign_ecdsa_recoverable(&msg, &key).serialize_compact();
+
+        EcdsaSig {
+            v: v.to_i32() as u64 + chain_id * 2 + 35,
+            r: sig_bytes[0..32].to_vec(),
+            s: sig_bytes[32..64].to_vec(),
+        }
+    }
+}
+
+fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
+    let mut hasher = Keccak::v256();
+    hasher.update(bytes);
+    let mut resp: [u8; 32] = Default::default();
+    hasher.finalize(&mut resp);
+    resp
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{AccessListTransaction, EcdsaSig, LegacyTransaction, Transaction};
+
+    use serde_json;
+    use std::collections::HashMap;
+    use std::fs::File;
+    use std::io::Read;
+
+
+    #[test]
+    fn test_random_access_list_transaction_001() {
+        run_signing_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
+    }
+
+    #[test]
+    fn test_random_access_list_transaction_002() {
+        run_signing_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
+    }
+
+    #[test]
+    fn test_random_access_list_transaction_003() {
+        run_signing_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
+    }
+
+    #[test]
+    fn test_random_legacy_001() {
+        run_signing_test::<LegacyTransaction>("./test/random_legacy_001.json");
+    }
+
+    #[test]
+    fn test_random_legacy_002() {
+        run_signing_test::<LegacyTransaction>("./test/random_legacy_002.json");
+    }
+
+    #[test]
+    fn test_zero_legacy_001() {
+        run_signing_test::<LegacyTransaction>("./test/zero_legacy_001.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_001() {
+        run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
+    }
+
+    #[test]
+    fn test_serde_random_access_list_transaction_001() {
+        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
+    }
+
+    #[test]
+    fn test_serde_random_access_list_transaction_002() {
+        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
+    }
+
+    #[test]
+    fn test_serde_random_access_list_transaction_003() {
+        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
+    }
+
+    fn run_serialization_deserialization_test<T: Transaction + serde::de::DeserializeOwned + std::fmt::Debug + serde::Serialize + serde::de::DeserializeOwned + std::cmp::Eq>(path: &str) {
+        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
+        let mut f_string = String::new();
+        file.read_to_string(&mut f_string).unwrap();
+
+        let values: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
+        let transaction_original: T = serde_json::from_value(values["input"].clone()).unwrap();
+        let transaction_string = serde_json::to_string(&transaction_original).unwrap();
+
+        assert_eq!(transaction_original, serde_json::from_str(&transaction_string).unwrap())
+    }
+
+    fn run_signing_test<T: Transaction + serde::de::DeserializeOwned>(path: &str) {
+        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
+        let mut f_string = String::new();
+        file.read_to_string(&mut f_string).unwrap();
+
+        let values: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
+
+        let transaction: T = serde_json::from_value(values["input"].clone()).unwrap();
+        let ecdsa: EcdsaSig = serde_json::from_value(values["output"].clone()).unwrap();
+        let expected_bytes_string: String =
+            serde_json::from_value(values["output"]["bytes"].clone()).unwrap();
+        let expected_bytes_string = expected_bytes_string.replace("0x", "");
+
+        let actual_bytes = transaction.sign(&ecdsa);
+        let actual_bytes_string = hex::encode(&actual_bytes);
+
+        println!(
+            "Expecting {} byte(s), got {} byte(s)",
+            expected_bytes_string.len(),
+            actual_bytes_string.len()
+        );
+
+        assert_eq!(expected_bytes_string, actual_bytes_string);
+    }
+}
