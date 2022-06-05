@@ -452,7 +452,6 @@ mod test {
     use std::fs::File;
     use std::io::Read;
 
-    use rlp::Rlp;
 
     #[test]
     fn test_random_access_list_transaction_001() {
@@ -514,20 +513,6 @@ mod test {
             expected_bytes_string.len(),
             actual_bytes_string.len()
         );
-
-        if expected_bytes != actual_bytes {
-            println!("Expected parts:");
-
-            for r in Rlp::new(&expected_bytes[1..expected_bytes.len()]).iter() {
-                println!("{}", r);
-            }
-
-            println!("Actual parts");
-
-            for r in Rlp::new(&actual_bytes[1..actual_bytes.len()]).iter() {
-                println!("{}", r);
-            }
-        }
 
         assert_eq!(expected_bytes_string, actual_bytes_string);
     }
