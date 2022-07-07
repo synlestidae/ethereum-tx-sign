@@ -7,8 +7,14 @@ extern crate bytes;
 extern crate hex;
 extern crate num_traits;
 extern crate rlp;
+#[cfg(feature = "lib-secp256k1")]
 extern crate secp256k1;
+#[cfg(feature = "lib-k256")]
+extern crate k256;
 extern crate tiny_keccak;
+
+#[cfg(all(feature = "secp256k1", feature = "k256"))]
+compile_error!("only one of secp256k1 or k256 may be active at a time");
 
 #[cfg(test)]
 extern crate ethereum_types;
