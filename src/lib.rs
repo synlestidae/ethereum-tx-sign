@@ -22,7 +22,7 @@ extern crate ethereum_types;
 extern crate serde_json;
 
 use rlp::{Encodable, RlpStream};
-use secp256k1::{Message, Secp256k1, SecretKey};
+//use secp256k1::{Message, Secp256k1, SecretKey};
 use serde::de::Error;
 use serde::ser::SerializeSeq;
 use serde::Deserialize;
@@ -49,11 +49,18 @@ pub trait Transaction {
         keccak256_hash(&rlp_stream.out())
     }
 
-    /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction
+    /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction using [secp256k1](https://docs.rs/secp256k1/).
+    #[cfg(feature = "lib-secpk256k1")]
     fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
         let hash = self.hash();
 
-        EcdsaSig::generate(hash, private_key, self.chain())
+        secpk256k1::EcdsaSig::generate(hash, private_key, self.chain())
+    }
+
+    /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction using [k256](https://docs.rs/secp256k1/k256/).
+    #[cfg(feature = "lib-k256")]
+    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
+        todo!()
     }
 
     /// Sign and encode this transaction using the given ECDSA signature.
@@ -427,10 +434,11 @@ pub struct EcdsaSig {
 }
 
 impl EcdsaSig {
+    #[cfg(feature = "lib-secpk256k1")]
     pub fn generate(hash: [u8; 32], private_key: &[u8], chain_id: u64) -> EcdsaSig {
-        let s = Secp256k1::signing_only();
-        let msg = Message::from_slice(&hash).unwrap();
-        let key = SecretKey::from_slice(private_key).unwrap();
+        let s = secpk256k1::Secp256k1::signing_only();
+        let msg = secpk256k1::Message::from_slice(&hash).unwrap();
+        let key = secpk256k1::SecretKey::from_slice(private_key).unwrap();
         let (v, sig_bytes) = s.sign_ecdsa_recoverable(&msg, &key).serialize_compact();
 
         EcdsaSig {
@@ -438,6 +446,11 @@ impl EcdsaSig {
             r: sig_bytes[0..32].to_vec(),
             s: sig_bytes[32..64].to_vec(),
         }
+    }
+
+    #[cfg(feature = "k256")]
+    pub fn generate(_hash: [u8; 32], _private_key: &[u8], _chain_id: u64) -> EcdsaSig {
+        todo!()
     }
 }
 
