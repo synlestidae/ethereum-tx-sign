@@ -7,23 +7,23 @@ extern crate bytes;
 extern crate hex;
 extern crate num_traits;
 extern crate rlp;
-#[cfg(feature = "lib-secp256k1")]
+#[cfg(not(feature = "lib-k256"))]
 extern crate secp256k1;
 #[cfg(feature = "lib-k256")]
 extern crate k256;
 extern crate tiny_keccak;
-
-#[cfg(all(feature = "secp256k1", feature = "k256"))]
-compile_error!("only one of secp256k1 or k256 may be active at a time");
 
 #[cfg(test)]
 extern crate ethereum_types;
 #[cfg(test)]
 extern crate serde_json;
 
+//#[cfg(feature = "lib-k256")]
+//#[cfg(feature = "lib-secp256k1")]
+//compile_error!("Only one of lib-k256 or lib-secp256k1 may be enabled. Use `default-features = false, features = [\"lib-secp256k1\"]`");
+
 use rlp::{Encodable, RlpStream};
-//use secp256k1::{Message, Secp256k1, SecretKey};
-use serde::de::Error;
+use serde::de::Error as SerdErr;
 use serde::ser::SerializeSeq;
 use serde::Deserialize;
 use std::convert::TryInto;
@@ -50,16 +50,16 @@ pub trait Transaction {
     }
 
     /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction using [secp256k1](https://docs.rs/secp256k1/).
-    #[cfg(feature = "lib-secpk256k1")]
+    #[cfg(not(feature = "lib-k256"))]
     fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
         let hash = self.hash();
 
-        secpk256k1::EcdsaSig::generate(hash, private_key, self.chain())
+        EcdsaSig::generate(hash, private_key, self.chain())
     }
 
     /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction using [k256](https://docs.rs/secp256k1/k256/).
     #[cfg(feature = "lib-k256")]
-    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
+    fn ecdsa(&self, _private_key: &[u8]) -> EcdsaSig {
         todo!()
     }
 
@@ -434,11 +434,11 @@ pub struct EcdsaSig {
 }
 
 impl EcdsaSig {
-    #[cfg(feature = "lib-secpk256k1")]
+    #[cfg(not(feature = "lib-k256"))]
     pub fn generate(hash: [u8; 32], private_key: &[u8], chain_id: u64) -> EcdsaSig {
-        let s = secpk256k1::Secp256k1::signing_only();
-        let msg = secpk256k1::Message::from_slice(&hash).unwrap();
-        let key = secpk256k1::SecretKey::from_slice(private_key).unwrap();
+        let s = secp256k1::Secp256k1::signing_only();
+        let msg = secp256k1::Message::from_slice(&hash).unwrap();
+        let key = secp256k1::SecretKey::from_slice(private_key).unwrap();
         let (v, sig_bytes) = s.sign_ecdsa_recoverable(&msg, &key).serialize_compact();
 
         EcdsaSig {
@@ -451,6 +451,27 @@ impl EcdsaSig {
     #[cfg(feature = "k256")]
     pub fn generate(_hash: [u8; 32], _private_key: &[u8], _chain_id: u64) -> EcdsaSig {
         todo!()
+    }
+}
+
+pub enum Error {
+    #[cfg(not(feature = "lib-k256"))]
+    SigErr(secp256k1::Error),
+    #[cfg(feature = "lib-k256")]
+    SigErr(k256::schnorr::Error)
+}
+
+#[cfg(not(feature = "lib-k256"))]
+impl From<secp256k1::Error> for Error {
+    fn from(err: secp256k1::Error) -> Self {
+        Error::SigErr(err)
+    }
+}
+
+#[cfg(feature = "lib-k256")]
+impl From<k256::schnorr::Error> for Error {
+    fn from(err: k256::schnorr::Error) -> Self {
+        Error::SigErr(err)
     }
 }
 
