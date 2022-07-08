@@ -11,6 +11,8 @@ extern crate rlp;
 extern crate secp256k1;
 #[cfg(feature = "lib-k256")]
 extern crate k256;
+#[cfg(feature = "lib-k256")]
+extern crate ecdsa;
 extern crate tiny_keccak;
 
 #[cfg(test)]
@@ -18,16 +20,15 @@ extern crate ethereum_types;
 #[cfg(test)]
 extern crate serde_json;
 
-//#[cfg(feature = "lib-k256")]
-//#[cfg(feature = "lib-secp256k1")]
-//compile_error!("Only one of lib-k256 or lib-secp256k1 may be enabled. Use `default-features = false, features = [\"lib-secp256k1\"]`");
-
 use rlp::{Encodable, RlpStream};
 use serde::de::Error as SerdErr;
 use serde::ser::SerializeSeq;
 use serde::Deserialize;
 use std::convert::TryInto;
 use tiny_keccak::{Hasher, Keccak};
+
+#[cfg(feature = "lib-k256")]
+use k256::ecdsa::signature::Signer;
 
 /// Ethereum transaction
 pub trait Transaction {
@@ -51,7 +52,7 @@ pub trait Transaction {
 
     /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction using [secp256k1](https://docs.rs/secp256k1/).
     #[cfg(not(feature = "lib-k256"))]
-    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
+    fn ecdsa(&self, private_key: &[u8]) -> Result<EcdsaSig, Error> {
         let hash = self.hash();
 
         EcdsaSig::generate(hash, private_key, self.chain())
@@ -59,7 +60,7 @@ pub trait Transaction {
 
     /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction using [k256](https://docs.rs/secp256k1/k256/).
     #[cfg(feature = "lib-k256")]
-    fn ecdsa(&self, _private_key: &[u8]) -> EcdsaSig {
+    fn ecdsa(&self, _private_key: &[u8]) -> Result<EcdsaSig, Error> {
         todo!()
     }
 
@@ -77,7 +78,7 @@ pub trait Transaction {
     ///     gas: 21000,
     ///     data: vec![]
     /// };
-    /// let ecdsa = tx.ecdsa(&vec![0x35; 32]);
+    /// let ecdsa = tx.ecdsa(&vec![0x35; 32]).unwrap();
     /// let tx_bytes = tx.sign(&ecdsa);
     /// ```
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8>;
@@ -435,22 +436,31 @@ pub struct EcdsaSig {
 
 impl EcdsaSig {
     #[cfg(not(feature = "lib-k256"))]
-    pub fn generate(hash: [u8; 32], private_key: &[u8], chain_id: u64) -> EcdsaSig {
+    pub fn generate(hash: [u8; 32], private_key: &[u8], chain_id: u64) -> Result<EcdsaSig, Error> {
         let s = secp256k1::Secp256k1::signing_only();
-        let msg = secp256k1::Message::from_slice(&hash).unwrap();
-        let key = secp256k1::SecretKey::from_slice(private_key).unwrap();
+        let msg = secp256k1::Message::from_slice(&hash)?;
+        let key = secp256k1::SecretKey::from_slice(private_key)?;
         let (v, sig_bytes) = s.sign_ecdsa_recoverable(&msg, &key).serialize_compact();
 
-        EcdsaSig {
+        Ok(EcdsaSig {
             v: v.to_i32() as u64 + chain_id * 2 + 35,
             r: sig_bytes[0..32].to_vec(),
             s: sig_bytes[32..64].to_vec(),
-        }
+        })
     }
 
-    #[cfg(feature = "k256")]
-    pub fn generate(_hash: [u8; 32], _private_key: &[u8], _chain_id: u64) -> EcdsaSig {
-        todo!()
+    #[cfg(feature = "lib-k256")]
+    pub fn generate(hash: [u8; 32], private_key: &[u8], chain_id: u64) -> Result<EcdsaSig, Error> {
+        let key = k256::ecdsa::SigningKey::from_bytes(private_key)?;
+        let sig:  k256::ecdsa::recoverable::Signature = key.sign(&hash);
+
+        let sig_bytes = sig.as_ref().iter().cloned().collect::<Vec<u8>>();
+
+        Ok(EcdsaSig {
+            v: (if sig.recovery_id().is_y_odd() { 1 } else { 0 }) as u64 + chain_id * 2 + 35,//v.to_i32() as u64 + chain_id * 2 + 35,
+            r: sig_bytes[0..32].to_vec(),
+            s: sig_bytes[32..64].to_vec(),
+        })
     }
 }
 
@@ -458,7 +468,7 @@ pub enum Error {
     #[cfg(not(feature = "lib-k256"))]
     SigErr(secp256k1::Error),
     #[cfg(feature = "lib-k256")]
-    SigErr(k256::schnorr::Error)
+    SigErr(k256::ecdsa::Error)
 }
 
 #[cfg(not(feature = "lib-k256"))]
@@ -469,8 +479,8 @@ impl From<secp256k1::Error> for Error {
 }
 
 #[cfg(feature = "lib-k256")]
-impl From<k256::schnorr::Error> for Error {
-    fn from(err: k256::schnorr::Error) -> Self {
+impl From<k256::ecdsa::Error> for Error {
+    fn from(err: k256::ecdsa::Error) -> Self {
         Error::SigErr(err)
     }
 }
