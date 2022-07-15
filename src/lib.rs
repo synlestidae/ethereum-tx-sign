@@ -64,7 +64,7 @@ pub trait Transaction {
     ///     gas: 21000,
     ///     data: vec![]
     /// };
-    /// let ecdsa = tx.ecdsa(&vec![0x35; 32]);
+    /// let ecdsa = tx.ecdsa(&vec![0x35; 32]).unwrap();
     /// let tx_bytes = tx.sign(&ecdsa);
     /// ```
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8>;
