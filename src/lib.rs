@@ -17,9 +17,9 @@ extern crate serde_json;
 
 use rlp::{Encodable, RlpStream};
 use secp256k1::{Message, Secp256k1, SecretKey};
-use serde::de::Error;
 use serde::ser::SerializeSeq;
 use serde::Deserialize;
+use serde::de::Error as SerdeErr;
 use std::convert::TryInto;
 use tiny_keccak::{Hasher, Keccak};
 
@@ -44,7 +44,7 @@ pub trait Transaction {
     }
 
     /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction
-    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
+    fn ecdsa(&self, private_key: &[u8]) -> Result<EcdsaSig, Error> {
         let hash = self.hash();
 
         EcdsaSig::generate(hash, private_key, self.chain())
@@ -73,6 +73,17 @@ pub trait Transaction {
     /// parts. The parts must follow the order that they will be encoded,
     /// hashed, or signed.
     fn rlp_parts(&self) -> Vec<Box<dyn Encodable>>;
+}
+
+#[derive(Debug)]
+pub enum Error {
+    Secp256k1(secp256k1::Error)
+}
+
+impl From<secp256k1::Error> for Error {
+    fn from(error: secp256k1::Error) -> Self {
+        Error::Secp256k1(error)
+    }
 }
 
 /// Internal function that avoids duplicating a lot of signing code
@@ -421,17 +432,17 @@ pub struct EcdsaSig {
 }
 
 impl EcdsaSig {
-    pub fn generate(hash: [u8; 32], private_key: &[u8], chain_id: u64) -> EcdsaSig {
+    pub fn generate(hash: [u8; 32], private_key: &[u8], chain_id: u64) -> Result<EcdsaSig, Error> {
         let s = Secp256k1::signing_only();
-        let msg = Message::from_slice(&hash).unwrap();
-        let key = SecretKey::from_slice(private_key).unwrap();
+        let msg = Message::from_slice(&hash)?;
+        let key = SecretKey::from_slice(private_key)?;
         let (v, sig_bytes) = s.sign_ecdsa_recoverable(&msg, &key).serialize_compact();
 
-        EcdsaSig {
+        Ok(EcdsaSig {
             v: v.to_i32() as u64 + chain_id * 2 + 35,
             r: sig_bytes[0..32].to_vec(),
             s: sig_bytes[32..64].to_vec(),
-        }
+        })
     }
 }
 
