@@ -12,7 +12,7 @@ readme = "README.md"
 serde = "^1.0"
 serde_derive = "^1.0"
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
-secp256k1 = {version = "0.23.3", features = ["recovery"] }
+secp256k1 = {version = "0.23.4", features = ["recovery"] }
 rlp = "0.5.1"
 num-traits = "0.2"
 bytes = "^1"
