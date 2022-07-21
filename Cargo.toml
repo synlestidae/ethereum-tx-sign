@@ -1,6 +1,6 @@
 [package]
 name = "ethereum-tx-sign"
-version = "5.0.1"
+version = "5.0.1-rc2"
 description = "Allows you to sign Ethereum transactions offline."
 repository = "https://github.com/synlestidae/ethereum-tx-sign"
 license = "MIT"
