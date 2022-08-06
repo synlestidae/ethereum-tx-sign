@@ -143,9 +143,6 @@ function processScenario(params) {
 	}
 	const originalPrivateKey = privateKey;
 	let tx;
-	if (!!transaction.gas) {
-		throw new Error('Transaction requires gas');
-	}
 	if (transaction.type === '0x01') {
 		tx = AccessListEIP2930Transaction.fromTxData(transaction, { common });
 	} else {
@@ -159,7 +156,6 @@ function processScenario(params) {
 
 	const signedTx = tx.sign(privateKey);
 	const hash = '0x'+ signedTx.getMessageToSign().toString('hex');
-	const rawUnsigned  = signedTx.getMessageToSign(false).toString('hex')
 	const v = parseInt(signedTx.v.toString());
 
 	const vrs = {
@@ -176,7 +172,6 @@ function processScenario(params) {
 		output: {
 			...vrs,
 			hash,
-			rawUnsigned,
 			bytes: '0x' + signedTx.serialize().toString('hex')
 		}
 	};
@@ -189,7 +184,7 @@ let processedScenarios = processScenarios(scenarios);
 for (let s of processedScenarios) {
 	s.input.data = '0x' + s.input.data.toString('hex');
 	s.input.gas = s.input.gasLimit;
-	//delete s.input.gasLimit;
+	delete s.input.gasLimit;
 }
 if (processedScenarios.length === 1) {
 	processedScenarios = processedScenarios[0];

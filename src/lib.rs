@@ -59,7 +59,12 @@ pub trait Transaction {
     fn ecdsa(&self, private_key: &[u8]) -> Result<EcdsaSig, Error> {
         let hash = self.hash();
 
-        EcdsaSig::generate(hash, private_key, self.chain())
+        let chain = match Self::transaction_type() {
+            Some(_) => None,
+            None => Some(self.chain())
+        };
+
+        EcdsaSig::generate(hash, private_key, chain)
     }
 
     /// Sign and encode this transaction using the given ECDSA signature.
@@ -447,14 +452,16 @@ pub struct EcdsaSig {
 }
 
 impl EcdsaSig {
-    pub fn generate(hash: [u8; 32], private_key: &[u8], chain_id: u64) -> Result<EcdsaSig, Error> {
+    fn generate(hash: [u8; 32], private_key: &[u8], chain_id: Option<u64>) -> Result<EcdsaSig, Error> {
         let s = Secp256k1::signing_only();
         let msg = Message::from_slice(&hash)?;
         let key = SecretKey::from_slice(private_key)?;
         let (v, sig_bytes) = s.sign_ecdsa_recoverable(&msg, &key).serialize_compact();
 
+        let v = v.to_i32() as u64 + match chain_id { Some(c) => c * 2 + 35, None => 0 };
+
         Ok(EcdsaSig {
-            v: v.to_i32() as u64 + chain_id * 2 + 35,
+            v,
             r: sig_bytes[0..32].to_vec(),
             s: sig_bytes[32..64].to_vec(),
         })
