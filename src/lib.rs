@@ -17,9 +17,9 @@ extern crate serde_json;
 
 use rlp::{Encodable, RlpStream};
 use secp256k1::{Message, Secp256k1, SecretKey};
+use serde::de::Error as SerdeErr;
 use serde::ser::SerializeSeq;
 use serde::Deserialize;
-use serde::de::Error as SerdeErr;
 use std::convert::TryInto;
 use tiny_keccak::{Hasher, Keccak};
 
@@ -49,7 +49,7 @@ pub trait Transaction {
 
         match Self::transaction_type() {
             Some(tt) => rlp_bytes.insert(0usize, tt),
-            None => ()
+            None => (),
         };
 
         keccak256_hash(&rlp_bytes)
@@ -61,7 +61,7 @@ pub trait Transaction {
 
         let chain = match Self::transaction_type() {
             Some(_) => None,
-            None => Some(self.chain())
+            None => Some(self.chain()),
         };
 
         EcdsaSig::generate(hash, private_key, chain)
@@ -98,7 +98,7 @@ pub trait Transaction {
 
 #[derive(Debug)]
 pub enum Error {
-    Secp256k1(secp256k1::Error)
+    Secp256k1(secp256k1::Error),
 }
 
 impl From<secp256k1::Error> for Error {
@@ -424,7 +424,7 @@ impl Transaction for AccessListTransaction {
             Box::new(to),
             Box::new(self.value),
             Box::new(self.data.clone()),
-            Box::new(self.access_list.clone())
+            Box::new(self.access_list.clone()),
         ];
 
         parts
@@ -452,13 +452,21 @@ pub struct EcdsaSig {
 }
 
 impl EcdsaSig {
-    fn generate(hash: [u8; 32], private_key: &[u8], chain_id: Option<u64>) -> Result<EcdsaSig, Error> {
+    fn generate(
+        hash: [u8; 32],
+        private_key: &[u8],
+        chain_id: Option<u64>,
+    ) -> Result<EcdsaSig, Error> {
         let s = Secp256k1::signing_only();
         let msg = Message::from_slice(&hash)?;
         let key = SecretKey::from_slice(private_key)?;
         let (v, sig_bytes) = s.sign_ecdsa_recoverable(&msg, &key).serialize_compact();
 
-        let v = v.to_i32() as u64 + match chain_id { Some(c) => c * 2 + 35, None => 0 };
+        let v = v.to_i32() as u64
+            + match chain_id {
+                Some(c) => c * 2 + 35,
+                None => 0,
+            };
 
         Ok(EcdsaSig {
             v,
@@ -484,7 +492,6 @@ mod test {
     use std::collections::HashMap;
     use std::fs::File;
     use std::io::Read;
-
 
     #[test]
     fn test_random_access_list_transaction_001() {
@@ -622,7 +629,6 @@ mod test {
     fn test_zero_legacy_001_ecdsa() {
         run_ecdsa_test::<LegacyTransaction>("./test/zero_legacy_001.json");
     }
-    
 
     #[test]
     fn test_zero_access_list_transaction_001() {
@@ -651,20 +657,35 @@ mod test {
 
     #[test]
     fn test_serde_random_access_list_transaction_001() {
-        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
+        run_serialization_deserialization_test::<AccessListTransaction>(
+            "./test/random_eip_2930_001.json",
+        );
     }
 
     #[test]
     fn test_serde_random_access_list_transaction_002() {
-        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
+        run_serialization_deserialization_test::<AccessListTransaction>(
+            "./test/random_eip_2930_002.json",
+        );
     }
 
     #[test]
     fn test_serde_random_access_list_transaction_003() {
-        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
+        run_serialization_deserialization_test::<AccessListTransaction>(
+            "./test/random_eip_2930_003.json",
+        );
     }
 
-    fn run_serialization_deserialization_test<T: Transaction + serde::de::DeserializeOwned + std::fmt::Debug + serde::Serialize + serde::de::DeserializeOwned + std::cmp::Eq>(path: &str) {
+    fn run_serialization_deserialization_test<
+        T: Transaction
+            + serde::de::DeserializeOwned
+            + std::fmt::Debug
+            + serde::Serialize
+            + serde::de::DeserializeOwned
+            + std::cmp::Eq,
+    >(
+        path: &str,
+    ) {
         let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
@@ -673,7 +694,10 @@ mod test {
         let transaction_original: T = serde_json::from_value(values["input"].clone()).unwrap();
         let transaction_string = serde_json::to_string(&transaction_original).unwrap();
 
-        assert_eq!(transaction_original, serde_json::from_str(&transaction_string).unwrap())
+        assert_eq!(
+            transaction_original,
+            serde_json::from_str(&transaction_string).unwrap()
+        )
     }
 
     // TODO refactor some of the below
@@ -703,17 +727,20 @@ mod test {
         assert_eq!(expected_bytes_string, actual_bytes_string);
     }
 
-    fn run_ecdsa_test<T: Transaction  + serde::de::DeserializeOwned>(path: &str) where T: std::fmt::Debug {
+    fn run_ecdsa_test<T: Transaction + serde::de::DeserializeOwned>(path: &str)
+    where
+        T: std::fmt::Debug,
+    {
         let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
         let mut f_string = String::new();
-       file.read_to_string(&mut f_string).unwrap();
+        file.read_to_string(&mut f_string).unwrap();
 
         let values: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
 
         let transaction: T = serde_json::from_value(values["input"].clone()).unwrap();
         let private_key: String = match &values["privateKey"] {
-             serde_json::Value::String(ref pk) => pk.clone(),
-             _ => panic!("Unexpected type for private key (expected string)")
+            serde_json::Value::String(ref pk) => pk.clone(),
+            _ => panic!("Unexpected type for private key (expected string)"),
         };
         let decoded_pk = hex::decode(private_key.replace("0x", "")).unwrap();
         let signed_ecdsa = transaction.ecdsa(&decoded_pk).unwrap();
@@ -721,8 +748,11 @@ mod test {
 
         assert_eq!(expected_ecdsa, signed_ecdsa)
     }
-    
-    fn run_hash_test<T: Transaction  + serde::de::DeserializeOwned>(path: &str) where T: std::fmt::Debug {
+
+    fn run_hash_test<T: Transaction + serde::de::DeserializeOwned>(path: &str)
+    where
+        T: std::fmt::Debug,
+    {
         let mut file = File::open(&path).expect(&format!("Failed to open: {}", path));
         dbg!(path);
         let mut f_string = String::new();
@@ -733,9 +763,9 @@ mod test {
         let transaction: T = serde_json::from_value(values["input"].clone()).unwrap();
         dbg!(&values);
         let expected_hash = match &values["output"]["hash"] {
-             serde_json::Value::String(ref h) => h.clone().replace("0x", ""),
-             serde_json::Value::Null  => panic!("Test is missing `hash`"),
-             v  => panic!("Unexpected type for hash (expected string, got {:?})", v)
+            serde_json::Value::String(ref h) => h.clone().replace("0x", ""),
+            serde_json::Value::Null => panic!("Test is missing `hash`"),
+            v => panic!("Unexpected type for hash (expected string, got {:?})", v),
         };
         let actual_hash = hex::encode(transaction.hash());
 
