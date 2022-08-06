@@ -47,10 +47,9 @@ pub trait Transaction {
         rlp_stream.finalize_unbounded_list();
         let mut rlp_bytes = rlp_stream.out().to_vec();
 
-        match Self::transaction_type() {
-            Some(tt) => rlp_bytes.insert(0usize, tt),
-            None => (),
-        };
+        if let Some(tt) = Self::transaction_type() {
+            rlp_bytes.insert(0usize, tt);
+        }
 
         keccak256_hash(&rlp_bytes)
     }
@@ -123,10 +122,9 @@ fn sign_bytes<T: Transaction>(tx_type: Option<u8>, ecdsa: &EcdsaSig, t: &T) -> V
     rlp_stream.finalize_unbounded_list();
 
     let mut vec = rlp_stream.out().to_vec();
-    match tx_type {
-        Some(b) => vec.insert(0usize, b),
-        None => {}
-    };
+    if let Some(b) = tx_type {
+        vec.insert(0usize, b)
+    }
     vec
 }
 
