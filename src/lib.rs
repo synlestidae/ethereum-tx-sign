@@ -531,6 +531,8 @@ mod test {
         run_hash_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
     }
 
+    // TX RANDOM LEGACY 001
+
     #[test]
     fn test_random_legacy_001() {
         run_signing_test::<LegacyTransaction>("./test/random_legacy_001.json");
@@ -546,6 +548,8 @@ mod test {
         run_hash_test::<LegacyTransaction>("./test/random_legacy_001.json");
     }
 
+    // TX RANDOM LEGACY 002
+
     #[test]
     fn test_random_legacy_002() {
         run_signing_test::<LegacyTransaction>("./test/random_legacy_002.json");
@@ -555,6 +559,59 @@ mod test {
     fn test_random_legacy_002_ecdsa() {
         run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_002.json");
     }
+
+    // TX RANDOM LEGACY 003
+
+    #[test]
+    fn test_random_legacy_003() {
+        run_signing_test::<LegacyTransaction>("./test/random_legacy_003.json");
+    }
+
+    #[test]
+    fn test_random_legacy_003_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_003.json");
+    }
+
+    #[test]
+    fn test_random_legacy_003_hash() {
+        run_hash_test::<LegacyTransaction>("./test/random_legacy_003.json");
+    }
+
+    // TX RANDOM LEGACY 004
+
+    #[test]
+    fn test_random_legacy_004() {
+        run_signing_test::<LegacyTransaction>("./test/random_legacy_004.json");
+    }
+
+    #[test]
+    fn test_random_legacy_004_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_004.json");
+    }
+
+    #[test]
+    fn test_random_legacy_004_hash() {
+        run_hash_test::<LegacyTransaction>("./test/random_legacy_004.json");
+    }
+
+    // TX RANDOM LEGACY 005
+
+    #[test]
+    fn test_random_legacy_005() {
+        run_signing_test::<LegacyTransaction>("./test/random_legacy_005.json");
+    }
+
+    #[test]
+    fn test_random_legacy_005_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_005.json");
+    }
+
+    #[test]
+    fn test_random_legacy_005_hash() {
+        run_hash_test::<LegacyTransaction>("./test/random_legacy_005.json");
+    }
+
+    // TX ZERO LEGACY 001
 
     #[test]
     fn test_zero_legacy_001() {
