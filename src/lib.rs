@@ -512,6 +512,11 @@ mod test {
     }
 
     #[test]
+    fn test_random_access_list_transaction_002_hash() {
+        run_hash_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
+    }
+
+    #[test]
     fn test_random_access_list_transaction_003() {
         run_signing_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
     }
@@ -522,6 +527,11 @@ mod test {
     }
 
     #[test]
+    fn test_random_access_list_transaction_003_hash() {
+        run_hash_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
+    }
+
+    #[test]
     fn test_random_legacy_001() {
         run_signing_test::<LegacyTransaction>("./test/random_legacy_001.json");
     }
@@ -529,6 +539,11 @@ mod test {
     #[test]
     fn test_random_legacy_001_ecdsa() {
         run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_001.json");
+    }
+
+    #[test]
+    fn test_random_legacy_001_hash() {
+        run_hash_test::<LegacyTransaction>("./test/random_legacy_001.json");
     }
 
     #[test]
@@ -550,6 +565,7 @@ mod test {
     fn test_zero_legacy_001_ecdsa() {
         run_ecdsa_test::<LegacyTransaction>("./test/zero_legacy_001.json");
     }
+    
 
     #[test]
     fn test_zero_access_list_transaction_001() {
@@ -559,6 +575,21 @@ mod test {
     #[test]
     fn test_zero_access_list_transaction_001_ecdsa() {
         run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_002() {
+        run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_002_hash() {
+        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_002_ecdsa() {
+        run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
     }
 
     #[test]
@@ -635,16 +666,19 @@ mod test {
     }
     
     fn run_hash_test<T: Transaction  + serde::de::DeserializeOwned>(path: &str) where T: std::fmt::Debug {
-        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
+        let mut file = File::open(&path).expect(&format!("Failed to open: {}", path));
+        dbg!(path);
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
 
         let values: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
 
         let transaction: T = serde_json::from_value(values["input"].clone()).unwrap();
+        dbg!(&values);
         let expected_hash = match &values["output"]["hash"] {
              serde_json::Value::String(ref h) => h.clone().replace("0x", ""),
-             _ => panic!("Unexpected type for hash (expected string)")
+             serde_json::Value::Null  => panic!("Test is missing `hash`"),
+             v  => panic!("Unexpected type for hash (expected string, got {:?})", v)
         };
         let actual_hash = hex::encode(transaction.hash());
 
