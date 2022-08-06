@@ -36,11 +36,23 @@ pub trait Transaction {
         for r in rlp.iter() {
             rlp_stream.append(r);
         }
-        rlp_stream.append(&self.chain());
-        rlp_stream.append_raw(&[0x80], 1);
-        rlp_stream.append_raw(&[0x80], 1);
+
+        // `None` means it is legacy
+        if Self::transaction_type().is_none() {
+            rlp_stream.append(&self.chain());
+            rlp_stream.append_raw(&[0x80], 1);
+            rlp_stream.append_raw(&[0x80], 1);
+        }
+
         rlp_stream.finalize_unbounded_list();
-        keccak256_hash(&rlp_stream.out())
+        let mut rlp_bytes = rlp_stream.out().to_vec();
+
+        match Self::transaction_type() {
+            Some(tt) => rlp_bytes.insert(0usize, tt),
+            None => ()
+        };
+
+        keccak256_hash(&rlp_bytes)
     }
 
     /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction
@@ -73,6 +85,10 @@ pub trait Transaction {
     /// parts. The parts must follow the order that they will be encoded,
     /// hashed, or signed.
     fn rlp_parts(&self) -> Vec<Box<dyn Encodable>>;
+
+    /// Returns the transaction defined as TransactionType in [EIP-2718](https://eips.ethereum.org/EIPS/eip-2718).
+    /// LegacyTransactions do not have a type, so will return None.
+    fn transaction_type() -> Option<u8>;
 }
 
 #[derive(Debug)]
@@ -101,17 +117,12 @@ fn sign_bytes<T: Transaction>(tx_type: Option<u8>, ecdsa: &EcdsaSig, t: &T) -> V
 
     rlp_stream.finalize_unbounded_list();
 
-    let mut bytes_out = rlp_stream.out().to_vec();
-    if let Some(t) = tx_type {
-        bytes_out.insert(0usize, t);
-    }
-    bytes_out
-}
-
-/// EIP-2817 Typed Transaction Envelope
-pub trait TypedTransaction: Transaction {
-    /// Returns the transaction type byte
-    fn transaction_type(&self) -> u8;
+    let mut vec = rlp_stream.out().to_vec();
+    match tx_type {
+        Some(b) => vec.insert(0usize, b),
+        None => {}
+    };
+    vec
 }
 
 /// Description of a Transaction, pending or in the chain.
@@ -131,6 +142,7 @@ pub struct LegacyTransaction {
     #[serde(rename = "gasPrice")]
     pub gas_price: u128,
     /// Gas limit
+    #[serde(alias = "gasLimit")]
     pub gas: u128,
     /// Input data
     #[serde(serialize_with = "slice_u8_serialize")]
@@ -160,6 +172,10 @@ impl Transaction for LegacyTransaction {
 
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
         sign_bytes(None, ecdsa, self)
+    }
+
+    fn transaction_type() -> Option<u8> {
+        None
     }
 }
 
@@ -362,7 +378,6 @@ where
 }
 
 fn derr<'de, D: serde::Deserializer<'de>>(s: &str, err: hex::FromHexError) -> D::Error {
-    println!("DERR: {}", s);
     match err {
         hex::FromHexError::InvalidHexCharacter { c, .. } => {
             D::Error::invalid_value(serde::de::Unexpected::Char(c), &"a valid hex character")
@@ -396,7 +411,7 @@ impl Transaction for AccessListTransaction {
             Some(ref to) => to.to_vec(),
             None => vec![],
         };
-        vec![
+        let mut parts: Vec<Box<dyn Encodable>> = vec![
             Box::new(self.chain),
             Box::new(self.nonce),
             Box::new(self.gas_price),
@@ -404,18 +419,18 @@ impl Transaction for AccessListTransaction {
             Box::new(to),
             Box::new(self.value),
             Box::new(self.data.clone()),
-            Box::new(self.access_list.clone()),
-        ]
+            Box::new(self.access_list.clone())
+        ];
+
+        parts
     }
 
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
         sign_bytes(Some(EIP_2930_TYPE), ecdsa, self)
     }
-}
 
-impl TypedTransaction for AccessListTransaction {
-    fn transaction_type(&self) -> u8 {
-        EIP_2930_TYPE
+    fn transaction_type() -> Option<u8> {
+        Some(EIP_2930_TYPE)
     }
 }
 
@@ -470,8 +485,23 @@ mod test {
     }
 
     #[test]
+    fn test_random_access_list_transaction_001_ecdsa() {
+        run_ecdsa_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
+    }
+
+    #[test]
+    fn test_random_access_list_transaction_001_hash() {
+        run_hash_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
+    }
+
+    #[test]
     fn test_random_access_list_transaction_002() {
         run_signing_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
+    }
+
+    #[test]
+    fn test_random_access_list_transaction_002_ecdsa() {
+        run_ecdsa_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
     }
 
     #[test]
@@ -480,8 +510,18 @@ mod test {
     }
 
     #[test]
+    fn test_random_access_list_transaction_003_ecdsa() {
+        run_ecdsa_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
+    }
+
+    #[test]
     fn test_random_legacy_001() {
         run_signing_test::<LegacyTransaction>("./test/random_legacy_001.json");
+    }
+
+    #[test]
+    fn test_random_legacy_001_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_001.json");
     }
 
     #[test]
@@ -490,13 +530,28 @@ mod test {
     }
 
     #[test]
+    fn test_random_legacy_002_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_002.json");
+    }
+
+    #[test]
     fn test_zero_legacy_001() {
         run_signing_test::<LegacyTransaction>("./test/zero_legacy_001.json");
     }
 
     #[test]
+    fn test_zero_legacy_001_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/zero_legacy_001.json");
+    }
+
+    #[test]
     fn test_zero_access_list_transaction_001() {
         run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_001_ecdsa() {
+        run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
     }
 
     #[test]
@@ -526,6 +581,8 @@ mod test {
         assert_eq!(transaction_original, serde_json::from_str(&transaction_string).unwrap())
     }
 
+    // TODO refactor some of the below
+
     fn run_signing_test<T: Transaction + serde::de::DeserializeOwned>(path: &str) {
         let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
         let mut f_string = String::new();
@@ -549,5 +606,41 @@ mod test {
         );
 
         assert_eq!(expected_bytes_string, actual_bytes_string);
+    }
+
+    fn run_ecdsa_test<T: Transaction  + serde::de::DeserializeOwned>(path: &str) where T: std::fmt::Debug {
+        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
+        let mut f_string = String::new();
+       file.read_to_string(&mut f_string).unwrap();
+
+        let values: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
+
+        let transaction: T = serde_json::from_value(values["input"].clone()).unwrap();
+        let private_key: String = match &values["privateKey"] {
+             serde_json::Value::String(ref pk) => pk.clone(),
+             _ => panic!("Unexpected type for private key (expected string)")
+        };
+        let decoded_pk = hex::decode(private_key.replace("0x", "")).unwrap();
+        let signed_ecdsa = transaction.ecdsa(&decoded_pk).unwrap();
+        let expected_ecdsa: EcdsaSig = serde_json::from_value(values["output"].clone()).unwrap();
+
+        assert_eq!(expected_ecdsa, signed_ecdsa)
+    }
+    
+    fn run_hash_test<T: Transaction  + serde::de::DeserializeOwned>(path: &str) where T: std::fmt::Debug {
+        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
+        let mut f_string = String::new();
+        file.read_to_string(&mut f_string).unwrap();
+
+        let values: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
+
+        let transaction: T = serde_json::from_value(values["input"].clone()).unwrap();
+        let expected_hash = match &values["output"]["hash"] {
+             serde_json::Value::String(ref h) => h.clone().replace("0x", ""),
+             _ => panic!("Unexpected type for hash (expected string)")
+        };
+        let actual_hash = hex::encode(transaction.hash());
+
+        assert_eq!(expected_hash, actual_hash)
     }
 }
