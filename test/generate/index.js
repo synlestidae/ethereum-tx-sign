@@ -182,7 +182,9 @@ function processScenario(params) {
 const scenarios = getScenarios(params);
 let processedScenarios = processScenarios(scenarios);
 for (let s of processedScenarios) {
-	s.input.data = '0x' + s.input.data.toString('hex');
+	if (s.input.data) {
+		s.input.data = '0x' + s.input.data.toString('hex');
+	}
 	s.input.gas = s.input.gasLimit || s.input.gas;
 	delete s.input.gasLimit;
 }

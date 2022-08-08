@@ -51,6 +51,8 @@ pub trait Transaction {
             rlp_bytes.insert(0usize, tt);
         }
 
+        dbg!(hex::encode(&rlp_bytes));
+
         keccak256_hash(&rlp_bytes)
     }
 
@@ -138,6 +140,7 @@ pub struct LegacyTransaction {
     /// Recipient (None when contract creation)
     #[serde(serialize_with = "option_array_u8_serialize")]
     #[serde(deserialize_with = "option_array_u8_deserialize")]
+    #[serde(default)]
     pub to: Option<[u8; 20]>,
     /// Transfered value
     pub value: u128,
@@ -150,6 +153,7 @@ pub struct LegacyTransaction {
     /// Input data
     #[serde(serialize_with = "slice_u8_serialize")]
     #[serde(deserialize_with = "slice_u8_deserialize")]
+    #[serde(default)]
     pub data: Vec<u8>,
 }
 
@@ -241,12 +245,14 @@ pub struct AccessListTransaction {
     /// Recipient (None when contract creation)
     #[serde(serialize_with = "option_array_u8_serialize")]
     #[serde(deserialize_with = "option_array_u8_deserialize")]
+    #[serde(default)]
     pub to: Option<[u8; 20]>,
     /// Transfered value
     pub value: u128,
     /// Input data
     #[serde(serialize_with = "slice_u8_serialize")]
     #[serde(deserialize_with = "slice_u8_deserialize")]
+    #[serde(default)]
     pub data: Vec<u8>,
     /// List of addresses and storage keys the transaction plans to access
     #[serde(rename = "accessList")]
@@ -629,6 +635,47 @@ mod test {
     }
 
     #[test]
+    fn test_zero_legacy_001_hash() {
+        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
+    }
+
+    // TX ZERO LEGACY 002
+
+    #[test]
+    fn test_zero_legacy_002() {
+        run_signing_test::<LegacyTransaction>("./test/zero_legacy_002.json");
+    }
+
+    #[test]
+    fn test_zero_legacy_002_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/zero_legacy_002.json");
+    }
+
+    #[test]
+    fn test_zero_legacy_002_hash() {
+        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    // TX ZERO LEGACY 003
+
+    #[test]
+    fn test_zero_legacy_003() {
+        run_signing_test::<LegacyTransaction>("./test/zero_legacy_003.json");
+    }
+
+    #[test]
+    fn test_zero_legacy_003_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/zero_legacy_003.json");
+    }
+
+    #[test]
+    fn test_zero_legacy_003_hash() {
+        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_003.json");
+    }
+
+    // TX ZERO ACCESS LIST 001
+
+    #[test]
     fn test_zero_access_list_transaction_001() {
         run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
     }
@@ -639,8 +686,20 @@ mod test {
     }
 
     #[test]
+    fn test_zero_access_list_transaction_001_hash() {
+        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
+    }
+
+    // TX ZERO ACCESS LIST 002
+
+    #[test]
     fn test_zero_access_list_transaction_002() {
         run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_002_ecdsa() {
+        run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
     }
 
     #[test]
@@ -648,10 +707,24 @@ mod test {
         run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
     }
 
+    // TX ZERO ACCESS LIST 003
+
     #[test]
-    fn test_zero_access_list_transaction_002_ecdsa() {
+    fn test_zero_access_list_transaction_003() {
+        run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_003_ecdsa() {
         run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
     }
+
+    #[test]
+    fn test_zero_access_list_transaction_003_hash() {
+        run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    // Serialization tests
 
     #[test]
     fn test_serde_random_access_list_transaction_001() {
