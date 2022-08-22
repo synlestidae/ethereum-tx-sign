@@ -87,11 +87,11 @@ function randomScenario(type) {
 	} else {
 		const accessList = [];
 
-		for (let i = 0; i < randInt(10); i++) {
+		for (let i = 0; i < 1 + Math.floor(randInt(10)); i++) {
 			const address = '0x' + randomBytes(20).toString('hex');
 			const storageKeys = [];
 			
-			for (let i = 1; i < randInt(5); i++) {
+			for (let j = 0; j < 1 + Math.floor(randInt(5)); j++) {
 				storageKeys.push('0x' + randomBytes(32).toString('hex'));
 			}
 
@@ -138,6 +138,9 @@ function processScenarios(scenarios) {
 
 function processScenario(params) {
 	let { transaction, privateKey } = params;
+	if (params.input) {
+		transaction = params.input;
+	}
 	const originalPrivateKey = privateKey;
 	let tx;
 	if (transaction.type === '0x01') {
@@ -152,15 +155,23 @@ function processScenario(params) {
 	);
 
 	const signedTx = tx.sign(privateKey);
+	const hash = '0x'+ signedTx.getMessageToSign().toString('hex');
+	const v = parseInt(signedTx.v.toString());
+
+	const vrs = {
+			v: v,
+			r: '0x' + signedTx.r.toBuffer('bigendian', 32).toString('hex'),
+			s: '0x' + signedTx.s.toBuffer('bigendian', 32).toString('hex'),
+	};
+
 	return {
 		input: {
 			...transaction
 		},
 		privateKey: originalPrivateKey,
 		output: {
-			v: parseInt(signedTx.v),
-			r: '0x' + signedTx.r.toBuffer('bigendian', 32).toString('hex'),
-			s: '0x' + signedTx.s.toBuffer('bigendian', 32).toString('hex'),
+			...vrs,
+			hash,
 			bytes: '0x' + signedTx.serialize().toString('hex')
 		}
 	};
@@ -171,8 +182,10 @@ function processScenario(params) {
 const scenarios = getScenarios(params);
 let processedScenarios = processScenarios(scenarios);
 for (let s of processedScenarios) {
-	s.input.data = '0x' + s.input.data.toString('hex');
-	s.input.gas = s.input.gasLimit;
+	if (s.input.data) {
+		s.input.data = '0x' + s.input.data.toString('hex');
+	}
+	s.input.gas = s.input.gasLimit || s.input.gas;
 	delete s.input.gasLimit;
 }
 if (processedScenarios.length === 1) {
