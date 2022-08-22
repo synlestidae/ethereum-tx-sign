@@ -757,7 +757,7 @@ mod test {
     >(
         path: &str,
     ) {
-        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
+        let mut file = File::open(path).unwrap_or_else(|_| panic!("Failed to open: {}", path));
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
 
@@ -774,7 +774,7 @@ mod test {
     // TODO refactor some of the below
 
     fn run_signing_test<T: Transaction + serde::de::DeserializeOwned>(path: &str) {
-        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
+        let mut file = File::open(path).unwrap_or_else(|_| panic!("Failed to open: {}", path));
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
 
@@ -802,7 +802,7 @@ mod test {
     where
         T: std::fmt::Debug,
     {
-        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
+        let mut file = File::open(path).unwrap_or_else(|_| panic!("Failed to open: {}", path));
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
 
@@ -824,7 +824,7 @@ mod test {
     where
         T: std::fmt::Debug,
     {
-        let mut file = File::open(&path).expect(&format!("Failed to open: {}", path));
+        let mut file = File::open(&path).unwrap_or_else(|_| panic!("Failed to open: {}", path));
         dbg!(path);
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
