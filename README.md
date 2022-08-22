@@ -27,7 +27,7 @@ let new_transaction = LegacyTransaction {
 Signing a transaction is performed in two steps. First you get the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) using your private key. Then sign the transaction using it.
 
 ```rust
-let ecdsa = new_transaction.sign(&private_key_32_bytes);
+let ecdsa = new_transaction.ecdsa(&private_key_32_bytes).unwrap();
 let transaction_bytes = new_transaction.sign(&ecdsa);
 ```
 
