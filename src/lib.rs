@@ -17,7 +17,7 @@ extern crate serde_json;
 
 use rlp::{Encodable, RlpStream};
 use secp256k1::{Message, Secp256k1, SecretKey};
-use serde::de::Error;
+use serde::de::Error as SerdeErr;
 use serde::ser::SerializeSeq;
 use serde::Deserialize;
 use std::convert::TryInto;
@@ -36,18 +36,36 @@ pub trait Transaction {
         for r in rlp.iter() {
             rlp_stream.append(r);
         }
-        rlp_stream.append(&self.chain());
-        rlp_stream.append_raw(&[0x80], 1);
-        rlp_stream.append_raw(&[0x80], 1);
+
+        // `None` means it is legacy
+        if Self::transaction_type().is_none() {
+            rlp_stream.append(&self.chain());
+            rlp_stream.append_raw(&[0x80], 1);
+            rlp_stream.append_raw(&[0x80], 1);
+        }
+
         rlp_stream.finalize_unbounded_list();
-        keccak256_hash(&rlp_stream.out())
+        let mut rlp_bytes = rlp_stream.out().to_vec();
+
+        if let Some(tt) = Self::transaction_type() {
+            rlp_bytes.insert(0usize, tt);
+        }
+
+        dbg!(hex::encode(&rlp_bytes));
+
+        keccak256_hash(&rlp_bytes)
     }
 
     /// Compute the [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) for the transaction
-    fn ecdsa(&self, private_key: &[u8]) -> EcdsaSig {
+    fn ecdsa(&self, private_key: &[u8]) -> Result<EcdsaSig, Error> {
         let hash = self.hash();
 
-        EcdsaSig::generate(hash, private_key, self.chain())
+        let chain = match Self::transaction_type() {
+            Some(_) => None,
+            None => Some(self.chain()),
+        };
+
+        EcdsaSig::generate(hash, private_key, chain)
     }
 
     /// Sign and encode this transaction using the given ECDSA signature.
@@ -64,7 +82,7 @@ pub trait Transaction {
     ///     gas: 21000,
     ///     data: vec![]
     /// };
-    /// let ecdsa = tx.ecdsa(&vec![0x35; 32]);
+    /// let ecdsa = tx.ecdsa(&vec![0x35; 32]).unwrap();
     /// let tx_bytes = tx.sign(&ecdsa);
     /// ```
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8>;
@@ -73,6 +91,21 @@ pub trait Transaction {
     /// parts. The parts must follow the order that they will be encoded,
     /// hashed, or signed.
     fn rlp_parts(&self) -> Vec<Box<dyn Encodable>>;
+
+    /// Returns the transaction defined as TransactionType in [EIP-2718](https://eips.ethereum.org/EIPS/eip-2718).
+    /// LegacyTransactions do not have a type, so will return None.
+    fn transaction_type() -> Option<u8>;
+}
+
+#[derive(Debug)]
+pub enum Error {
+    Secp256k1(secp256k1::Error),
+}
+
+impl From<secp256k1::Error> for Error {
+    fn from(error: secp256k1::Error) -> Self {
+        Error::Secp256k1(error)
+    }
 }
 
 /// Internal function that avoids duplicating a lot of signing code
@@ -90,17 +123,11 @@ fn sign_bytes<T: Transaction>(tx_type: Option<u8>, ecdsa: &EcdsaSig, t: &T) -> V
 
     rlp_stream.finalize_unbounded_list();
 
-    let mut bytes_out = rlp_stream.out().to_vec();
-    if let Some(t) = tx_type {
-        bytes_out.insert(0usize, t);
+    let mut vec = rlp_stream.out().to_vec();
+    if let Some(b) = tx_type {
+        vec.insert(0usize, b)
     }
-    bytes_out
-}
-
-/// EIP-2817 Typed Transaction Envelope
-pub trait TypedTransaction: Transaction {
-    /// Returns the transaction type byte
-    fn transaction_type(&self) -> u8;
+    vec
 }
 
 /// Description of a Transaction, pending or in the chain.
@@ -113,6 +140,7 @@ pub struct LegacyTransaction {
     /// Recipient (None when contract creation)
     #[serde(serialize_with = "option_array_u8_serialize")]
     #[serde(deserialize_with = "option_array_u8_deserialize")]
+    #[serde(default)]
     pub to: Option<[u8; 20]>,
     /// Transfered value
     pub value: u128,
@@ -120,10 +148,12 @@ pub struct LegacyTransaction {
     #[serde(rename = "gasPrice")]
     pub gas_price: u128,
     /// Gas limit
+    #[serde(alias = "gasLimit")]
     pub gas: u128,
     /// Input data
     #[serde(serialize_with = "slice_u8_serialize")]
     #[serde(deserialize_with = "slice_u8_deserialize")]
+    #[serde(default)]
     pub data: Vec<u8>,
 }
 
@@ -149,6 +179,10 @@ impl Transaction for LegacyTransaction {
 
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
         sign_bytes(None, ecdsa, self)
+    }
+
+    fn transaction_type() -> Option<u8> {
+        None
     }
 }
 
@@ -211,12 +245,14 @@ pub struct AccessListTransaction {
     /// Recipient (None when contract creation)
     #[serde(serialize_with = "option_array_u8_serialize")]
     #[serde(deserialize_with = "option_array_u8_deserialize")]
+    #[serde(default)]
     pub to: Option<[u8; 20]>,
     /// Transfered value
     pub value: u128,
     /// Input data
     #[serde(serialize_with = "slice_u8_serialize")]
     #[serde(deserialize_with = "slice_u8_deserialize")]
+    #[serde(default)]
     pub data: Vec<u8>,
     /// List of addresses and storage keys the transaction plans to access
     #[serde(rename = "accessList")]
@@ -351,7 +387,6 @@ where
 }
 
 fn derr<'de, D: serde::Deserializer<'de>>(s: &str, err: hex::FromHexError) -> D::Error {
-    println!("DERR: {}", s);
     match err {
         hex::FromHexError::InvalidHexCharacter { c, .. } => {
             D::Error::invalid_value(serde::de::Unexpected::Char(c), &"a valid hex character")
@@ -385,7 +420,7 @@ impl Transaction for AccessListTransaction {
             Some(ref to) => to.to_vec(),
             None => vec![],
         };
-        vec![
+        let mut parts: Vec<Box<dyn Encodable>> = vec![
             Box::new(self.chain),
             Box::new(self.nonce),
             Box::new(self.gas_price),
@@ -394,17 +429,17 @@ impl Transaction for AccessListTransaction {
             Box::new(self.value),
             Box::new(self.data.clone()),
             Box::new(self.access_list.clone()),
-        ]
+        ];
+
+        parts
     }
 
     fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
         sign_bytes(Some(EIP_2930_TYPE), ecdsa, self)
     }
-}
 
-impl TypedTransaction for AccessListTransaction {
-    fn transaction_type(&self) -> u8 {
-        EIP_2930_TYPE
+    fn transaction_type() -> Option<u8> {
+        Some(EIP_2930_TYPE)
     }
 }
 
@@ -421,17 +456,27 @@ pub struct EcdsaSig {
 }
 
 impl EcdsaSig {
-    pub fn generate(hash: [u8; 32], private_key: &[u8], chain_id: u64) -> EcdsaSig {
+    fn generate(
+        hash: [u8; 32],
+        private_key: &[u8],
+        chain_id: Option<u64>,
+    ) -> Result<EcdsaSig, Error> {
         let s = Secp256k1::signing_only();
-        let msg = Message::from_slice(&hash).unwrap();
-        let key = SecretKey::from_slice(private_key).unwrap();
+        let msg = Message::from_slice(&hash)?;
+        let key = SecretKey::from_slice(private_key)?;
         let (v, sig_bytes) = s.sign_ecdsa_recoverable(&msg, &key).serialize_compact();
 
-        EcdsaSig {
-            v: v.to_i32() as u64 + chain_id * 2 + 35,
+        let v = v.to_i32() as u64
+            + match chain_id {
+                Some(c) => c * 2 + 35,
+                None => 0,
+            };
+
+        Ok(EcdsaSig {
+            v,
             r: sig_bytes[0..32].to_vec(),
             s: sig_bytes[32..64].to_vec(),
-        }
+        })
     }
 }
 
@@ -452,10 +497,19 @@ mod test {
     use std::fs::File;
     use std::io::Read;
 
-
     #[test]
     fn test_random_access_list_transaction_001() {
         run_signing_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
+    }
+
+    #[test]
+    fn test_random_access_list_transaction_001_ecdsa() {
+        run_ecdsa_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
+    }
+
+    #[test]
+    fn test_random_access_list_transaction_001_hash() {
+        run_hash_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
     }
 
     #[test]
@@ -464,9 +518,31 @@ mod test {
     }
 
     #[test]
+    fn test_random_access_list_transaction_002_ecdsa() {
+        run_ecdsa_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
+    }
+
+    #[test]
+    fn test_random_access_list_transaction_002_hash() {
+        run_hash_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
+    }
+
+    #[test]
     fn test_random_access_list_transaction_003() {
         run_signing_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
     }
+
+    #[test]
+    fn test_random_access_list_transaction_003_ecdsa() {
+        run_ecdsa_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
+    }
+
+    #[test]
+    fn test_random_access_list_transaction_003_hash() {
+        run_hash_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
+    }
+
+    // TX RANDOM LEGACY 001
 
     #[test]
     fn test_random_legacy_001() {
@@ -474,9 +550,79 @@ mod test {
     }
 
     #[test]
+    fn test_random_legacy_001_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_001.json");
+    }
+
+    #[test]
+    fn test_random_legacy_001_hash() {
+        run_hash_test::<LegacyTransaction>("./test/random_legacy_001.json");
+    }
+
+    // TX RANDOM LEGACY 002
+
+    #[test]
     fn test_random_legacy_002() {
         run_signing_test::<LegacyTransaction>("./test/random_legacy_002.json");
     }
+
+    #[test]
+    fn test_random_legacy_002_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_002.json");
+    }
+
+    // TX RANDOM LEGACY 003
+
+    #[test]
+    fn test_random_legacy_003() {
+        run_signing_test::<LegacyTransaction>("./test/random_legacy_003.json");
+    }
+
+    #[test]
+    fn test_random_legacy_003_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_003.json");
+    }
+
+    #[test]
+    fn test_random_legacy_003_hash() {
+        run_hash_test::<LegacyTransaction>("./test/random_legacy_003.json");
+    }
+
+    // TX RANDOM LEGACY 004
+
+    #[test]
+    fn test_random_legacy_004() {
+        run_signing_test::<LegacyTransaction>("./test/random_legacy_004.json");
+    }
+
+    #[test]
+    fn test_random_legacy_004_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_004.json");
+    }
+
+    #[test]
+    fn test_random_legacy_004_hash() {
+        run_hash_test::<LegacyTransaction>("./test/random_legacy_004.json");
+    }
+
+    // TX RANDOM LEGACY 005
+
+    #[test]
+    fn test_random_legacy_005() {
+        run_signing_test::<LegacyTransaction>("./test/random_legacy_005.json");
+    }
+
+    #[test]
+    fn test_random_legacy_005_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_005.json");
+    }
+
+    #[test]
+    fn test_random_legacy_005_hash() {
+        run_hash_test::<LegacyTransaction>("./test/random_legacy_005.json");
+    }
+
+    // TX ZERO LEGACY 001
 
     #[test]
     fn test_zero_legacy_001() {
@@ -484,27 +630,134 @@ mod test {
     }
 
     #[test]
+    fn test_zero_legacy_001_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/zero_legacy_001.json");
+    }
+
+    #[test]
+    fn test_zero_legacy_001_hash() {
+        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
+    }
+
+    // TX ZERO LEGACY 002
+
+    #[test]
+    fn test_zero_legacy_002() {
+        run_signing_test::<LegacyTransaction>("./test/zero_legacy_002.json");
+    }
+
+    #[test]
+    fn test_zero_legacy_002_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/zero_legacy_002.json");
+    }
+
+    #[test]
+    fn test_zero_legacy_002_hash() {
+        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    // TX ZERO LEGACY 003
+
+    #[test]
+    fn test_zero_legacy_003() {
+        run_signing_test::<LegacyTransaction>("./test/zero_legacy_003.json");
+    }
+
+    #[test]
+    fn test_zero_legacy_003_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/zero_legacy_003.json");
+    }
+
+    #[test]
+    fn test_zero_legacy_003_hash() {
+        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_003.json");
+    }
+
+    // TX ZERO ACCESS LIST 001
+
+    #[test]
     fn test_zero_access_list_transaction_001() {
         run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
     }
 
     #[test]
+    fn test_zero_access_list_transaction_001_ecdsa() {
+        run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_001_hash() {
+        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
+    }
+
+    // TX ZERO ACCESS LIST 002
+
+    #[test]
+    fn test_zero_access_list_transaction_002() {
+        run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_002_ecdsa() {
+        run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_002_hash() {
+        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    // TX ZERO ACCESS LIST 003
+
+    #[test]
+    fn test_zero_access_list_transaction_003() {
+        run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_003_ecdsa() {
+        run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    #[test]
+    fn test_zero_access_list_transaction_003_hash() {
+        run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+    }
+
+    // Serialization tests
+
+    #[test]
     fn test_serde_random_access_list_transaction_001() {
-        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
+        run_serialization_deserialization_test::<AccessListTransaction>(
+            "./test/random_eip_2930_001.json",
+        );
     }
 
     #[test]
     fn test_serde_random_access_list_transaction_002() {
-        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
+        run_serialization_deserialization_test::<AccessListTransaction>(
+            "./test/random_eip_2930_002.json",
+        );
     }
 
     #[test]
     fn test_serde_random_access_list_transaction_003() {
-        run_serialization_deserialization_test::<AccessListTransaction>("./test/random_eip_2930_003.json");
+        run_serialization_deserialization_test::<AccessListTransaction>(
+            "./test/random_eip_2930_003.json",
+        );
     }
 
-    fn run_serialization_deserialization_test<T: Transaction + serde::de::DeserializeOwned + std::fmt::Debug + serde::Serialize + serde::de::DeserializeOwned + std::cmp::Eq>(path: &str) {
-        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
+    fn run_serialization_deserialization_test<
+        T: Transaction
+            + serde::de::DeserializeOwned
+            + std::fmt::Debug
+            + serde::Serialize
+            + serde::de::DeserializeOwned
+            + std::cmp::Eq,
+    >(
+        path: &str,
+    ) {
+        let mut file = File::open(path).unwrap_or_else(|_| panic!("Failed to open: {}", path));
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
 
@@ -512,11 +765,16 @@ mod test {
         let transaction_original: T = serde_json::from_value(values["input"].clone()).unwrap();
         let transaction_string = serde_json::to_string(&transaction_original).unwrap();
 
-        assert_eq!(transaction_original, serde_json::from_str(&transaction_string).unwrap())
+        assert_eq!(
+            transaction_original,
+            serde_json::from_str(&transaction_string).unwrap()
+        )
     }
 
+    // TODO refactor some of the below
+
     fn run_signing_test<T: Transaction + serde::de::DeserializeOwned>(path: &str) {
-        let mut file = File::open(path).expect(&format!("Failed to open: {}", path));
+        let mut file = File::open(path).unwrap_or_else(|_| panic!("Failed to open: {}", path));
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
 
@@ -538,5 +796,50 @@ mod test {
         );
 
         assert_eq!(expected_bytes_string, actual_bytes_string);
+    }
+
+    fn run_ecdsa_test<T: Transaction + serde::de::DeserializeOwned>(path: &str)
+    where
+        T: std::fmt::Debug,
+    {
+        let mut file = File::open(path).unwrap_or_else(|_| panic!("Failed to open: {}", path));
+        let mut f_string = String::new();
+        file.read_to_string(&mut f_string).unwrap();
+
+        let values: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
+
+        let transaction: T = serde_json::from_value(values["input"].clone()).unwrap();
+        let private_key: String = match &values["privateKey"] {
+            serde_json::Value::String(ref pk) => pk.clone(),
+            _ => panic!("Unexpected type for private key (expected string)"),
+        };
+        let decoded_pk = hex::decode(private_key.replace("0x", "")).unwrap();
+        let signed_ecdsa = transaction.ecdsa(&decoded_pk).unwrap();
+        let expected_ecdsa: EcdsaSig = serde_json::from_value(values["output"].clone()).unwrap();
+
+        assert_eq!(expected_ecdsa, signed_ecdsa)
+    }
+
+    fn run_hash_test<T: Transaction + serde::de::DeserializeOwned>(path: &str)
+    where
+        T: std::fmt::Debug,
+    {
+        let mut file = File::open(&path).unwrap_or_else(|_| panic!("Failed to open: {}", path));
+        dbg!(path);
+        let mut f_string = String::new();
+        file.read_to_string(&mut f_string).unwrap();
+
+        let values: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
+
+        let transaction: T = serde_json::from_value(values["input"].clone()).unwrap();
+        dbg!(&values);
+        let expected_hash = match &values["output"]["hash"] {
+            serde_json::Value::String(ref h) => h.clone().replace("0x", ""),
+            serde_json::Value::Null => panic!("Test is missing `hash`"),
+            v => panic!("Unexpected type for hash (expected string, got {:?})", v),
+        };
+        let actual_hash = hex::encode(transaction.hash());
+
+        assert_eq!(expected_hash, actual_hash)
     }
 }
