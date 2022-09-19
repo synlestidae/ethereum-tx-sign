@@ -117,9 +117,20 @@ fn sign_bytes<T: Transaction>(tx_type: Option<u8>, ecdsa: &EcdsaSig, t: &T) -> V
         rlp_stream.append(r);
     }
     let EcdsaSig { v, s, r } = ecdsa;
+
+    // removes leading zeroes
+    let mut r_n = r.clone();
+    let mut s_n = s.clone();
+    while r_n[0] == 0 {
+        r_n.remove(0);
+    }
+    while s_n[0] == 0 {
+        s_n.remove(0);
+    }
+
     rlp_stream.append(v);
-    rlp_stream.append(r);
-    rlp_stream.append(s);
+    rlp_stream.append(&r_n);
+    rlp_stream.append(&s_n);
 
     rlp_stream.finalize_unbounded_list();
 
@@ -620,6 +631,30 @@ mod test {
     #[test]
     fn test_random_legacy_005_hash() {
         run_hash_test::<LegacyTransaction>("./test/random_legacy_005.json");
+    }
+
+    // TX RANDOM LEAADING ZEROES 001
+
+    #[test]
+    fn test_random_legacy_leading_zeroes_001_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_leading_zeroes_001.json");
+    }
+
+    #[test]
+    fn test_random_legacy_leading_zeroes_001_hash() {
+        run_hash_test::<LegacyTransaction>("./test/random_legacy_leading_zeroes_002.json");
+    }
+
+    // TX RANDOM LEAADING ZEROES 001
+
+    #[test]
+    fn test_random_legacy_leading_zeroes_002_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_leading_zeroes_001.json");
+    }
+
+    #[test]
+    fn test_random_legacy_leading_zeroes_002_hash() {
+        run_hash_test::<LegacyTransaction>("./test/random_legacy_leading_zeroes_002.json");
     }
 
     // TX ZERO LEGACY 001
