@@ -633,6 +633,30 @@ mod test {
         run_hash_test::<LegacyTransaction>("./test/random_legacy_005.json");
     }
 
+    // TX RANDOM LEAADING ZEROES 001
+
+    #[test]
+    fn test_random_legacy_leading_zeroes_001_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_leading_zeroes_001.json");
+    }
+
+    #[test]
+    fn test_random_legacy_leading_zeroes_001_hash() {
+        run_hash_test::<LegacyTransaction>("./test/random_legacy_leading_zeroes_002.json");
+    }
+
+    // TX RANDOM LEAADING ZEROES 001
+
+    #[test]
+    fn test_random_legacy_leading_zeroes_002_ecdsa() {
+        run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_leading_zeroes_001.json");
+    }
+
+    #[test]
+    fn test_random_legacy_leading_zeroes_002_hash() {
+        run_hash_test::<LegacyTransaction>("./test/random_legacy_leading_zeroes_002.json");
+    }
+
     // TX ZERO LEGACY 001
 
     #[test]
