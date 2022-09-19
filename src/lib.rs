@@ -117,9 +117,20 @@ fn sign_bytes<T: Transaction>(tx_type: Option<u8>, ecdsa: &EcdsaSig, t: &T) -> V
         rlp_stream.append(r);
     }
     let EcdsaSig { v, s, r } = ecdsa;
+
+    // removes leading zeroes
+    let mut r_n = r.clone();
+    let mut s_n = s.clone();
+    while r_n[0] == 0 {
+        r_n.remove(0);
+    }
+    while s_n[0] == 0 {
+        s_n.remove(0);
+    }
+
     rlp_stream.append(v);
-    rlp_stream.append(r);
-    rlp_stream.append(s);
+    rlp_stream.append(&r_n);
+    rlp_stream.append(&s_n);
 
     rlp_stream.finalize_unbounded_list();
 
