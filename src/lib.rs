@@ -454,6 +454,69 @@ impl Transaction for AccessListTransaction {
     }
 }
 
+const EIP_1559_TYPE: u8 = 0x02;
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// [EIP-1559](https://eips.ethereum.org/EIPS/eip-1559) fee market transaction.
+pub struct FeeMarketTransaction {
+  /// Chain ID
+  pub chain: u64,
+  /// Nonce
+  pub nonce: u128,
+  /// Gas price
+  #[serde(rename = "maxPriorityFeePerGas")]
+  pub max_priority_fee_per_gas: u128,
+  #[serde(rename = "maxFeePerGas")]
+  pub max_fee_per_gas: u128,
+  /// Gas limit
+  pub gas: u128,
+  /// Recipient (None when contract creation)
+  #[serde(serialize_with = "option_array_u8_serialize")]
+  #[serde(deserialize_with = "option_array_u8_deserialize")]
+  #[serde(default)]
+  pub to: Option<[u8; 20]>,
+  /// Transfered value
+  pub value: u128,
+  /// Input data
+  #[serde(serialize_with = "slice_u8_serialize")]
+  #[serde(deserialize_with = "slice_u8_deserialize")]
+  #[serde(default)]
+  pub data: Vec<u8>,
+  /// List of addresses and storage keys the transaction plans to access
+  #[serde(rename = "accessList")]
+  pub access_list: AccessList,
+}
+
+impl Transaction for FeeMarketTransaction {
+  fn chain(&self) -> u64 { self.chain }
+
+  fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
+    sign_bytes(Some(EIP_1559_TYPE), ecdsa, self)
+  }
+
+  fn rlp_parts(&self) -> Vec<Box<dyn Encodable>> {
+    let to: Vec<u8> = match self.to {
+      Some(ref to) => to.to_vec(),
+      None => vec![],
+    };
+    vec![
+      Box::new(self.chain),
+      Box::new(self.nonce),
+      Box::new(self.max_priority_fee_per_gas),
+      Box::new(self.max_fee_per_gas),
+      Box::new(self.gas),
+      Box::new(to),
+      Box::new(self.value),
+      Box::new(self.data.clone()),
+      Box::new(self.access_list.clone()),
+    ]
+  }
+
+  fn transaction_type() -> Option<u8> {
+    Some(EIP_1559_TYPE)
+  }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 /// Represents an [ECDSA](https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm) signature.
 pub struct EcdsaSig {
