@@ -252,6 +252,7 @@ pub struct AccessListTransaction {
     #[serde(rename = "gasPrice")]
     pub gas_price: u128,
     /// Gas limit
+    #[serde(alias = "gasLimit")]
     pub gas: u128,
     /// Recipient (None when contract creation)
     #[serde(serialize_with = "option_array_u8_serialize")]
@@ -469,6 +470,7 @@ pub struct FeeMarketTransaction {
   #[serde(rename = "maxFeePerGas")]
   pub max_fee_per_gas: u128,
   /// Gas limit
+  #[serde(alias = "gasLimit")]
   pub gas: u128,
   /// Recipient (None when contract creation)
   #[serde(serialize_with = "option_array_u8_serialize")]
@@ -564,12 +566,66 @@ fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 mod test {
-    use crate::{AccessListTransaction, EcdsaSig, LegacyTransaction, Transaction};
+    use crate::{AccessListTransaction, EcdsaSig, LegacyTransaction, Transaction, FeeMarketTransaction};
 
     use serde_json;
     use std::collections::HashMap;
+    use std::fmt::Debug;
     use std::fs::File;
     use std::io::Read;
+
+    // TX RANDOM FEE MARKET 001
+
+    #[test]
+    fn test_random_fee_market_transaction_001() {
+        run_signing_test::<FeeMarketTransaction>("./test/random_eip_1559_001.json");
+    }
+
+    #[test]
+    fn test_random_fee_market_transaction_001_ecdsa() {
+        run_ecdsa_test::<FeeMarketTransaction>("./test/random_eip_1559_001.json");
+    }
+
+    #[test]
+    fn test_random_fee_market_transaction_001_hash() {
+        run_hash_test::<FeeMarketTransaction>("./test/random_eip_1559_001.json");
+    }
+
+    // TX RANDOM FEE MARKET 002
+
+    #[test]
+    fn test_random_fee_market_transaction_002() {
+        run_signing_test::<FeeMarketTransaction>("./test/random_eip_1559_002.json");
+    }
+
+    #[test]
+    fn test_random_fee_market_transaction_002_ecdsa() {
+        run_ecdsa_test::<FeeMarketTransaction>("./test/random_eip_1559_002.json");
+    }
+
+    #[test]
+    fn test_random_fee_market_transaction_002_hash() {
+        run_hash_test::<FeeMarketTransaction>("./test/random_eip_1559_002.json");
+    }
+
+    // TX RANDOM FEE MARKET 003
+
+    #[test]
+    fn test_random_fee_market_transaction_003() {
+        run_signing_test::<FeeMarketTransaction>("./test/random_eip_1559_003.json");
+    }
+
+    #[test]
+    fn test_random_fee_market_transaction_003_ecdsa() {
+        run_ecdsa_test::<FeeMarketTransaction>("./test/random_eip_1559_003.json");
+    }
+
+    #[test]
+    fn test_random_fee_market_transaction_003_hash() {
+        run_hash_test::<FeeMarketTransaction>("./test/random_eip_1559_003.json");
+    }
+
+    // TX RANDOM ACCESS LIST 001
 
     #[test]
     fn test_random_access_list_transaction_001() {
@@ -586,6 +642,8 @@ mod test {
         run_hash_test::<AccessListTransaction>("./test/random_eip_2930_001.json");
     }
 
+    // TX RANDOM ACCESS LIST 002
+
     #[test]
     fn test_random_access_list_transaction_002() {
         run_signing_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
@@ -600,6 +658,8 @@ mod test {
     fn test_random_access_list_transaction_002_hash() {
         run_hash_test::<AccessListTransaction>("./test/random_eip_2930_002.json");
     }
+
+    // TX RANDOM ACCESS LIST 003
 
     #[test]
     fn test_random_access_list_transaction_003() {
@@ -643,6 +703,11 @@ mod test {
     #[test]
     fn test_random_legacy_002_ecdsa() {
         run_ecdsa_test::<LegacyTransaction>("./test/random_legacy_002.json");
+    }
+
+    #[test]
+    fn test_random_legacy_002_hash() {
+      run_hash_test::<LegacyTransaction>("./test/random_legacy_002.json");
     }
 
     // TX RANDOM LEGACY 003
@@ -696,7 +761,7 @@ mod test {
         run_hash_test::<LegacyTransaction>("./test/random_legacy_005.json");
     }
 
-    // TX RANDOM LEAADING ZEROES 001
+    // TX RANDOM LEADING ZEROES 001
 
     #[test]
     fn test_random_legacy_leading_zeroes_001_ecdsa() {
@@ -708,7 +773,7 @@ mod test {
         run_hash_test::<LegacyTransaction>("./test/random_legacy_leading_zeroes_002.json");
     }
 
-    // TX RANDOM LEAADING ZEROES 001
+    // TX RANDOM LEADING ZEROES 001
 
     #[test]
     fn test_random_legacy_leading_zeroes_002_ecdsa() {
@@ -734,7 +799,7 @@ mod test {
 
     #[test]
     fn test_zero_legacy_001_hash() {
-        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_001.json");
+        run_hash_test::<LegacyTransaction>("./test/zero_legacy_001.json");
     }
 
     // TX ZERO LEGACY 002
@@ -751,7 +816,7 @@ mod test {
 
     #[test]
     fn test_zero_legacy_002_hash() {
-        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+        run_hash_test::<LegacyTransaction>("./test/zero_legacy_002.json");
     }
 
     // TX ZERO LEGACY 003
@@ -768,7 +833,7 @@ mod test {
 
     #[test]
     fn test_zero_legacy_003_hash() {
-        run_hash_test::<AccessListTransaction>("./test/zero_eip_2718_003.json");
+        run_hash_test::<LegacyTransaction>("./test/zero_legacy_003.json");
     }
 
     // TX ZERO ACCESS LIST 001
@@ -809,20 +874,73 @@ mod test {
 
     #[test]
     fn test_zero_access_list_transaction_003() {
-        run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+        run_signing_test::<AccessListTransaction>("./test/zero_eip_2718_003.json");
     }
 
     #[test]
     fn test_zero_access_list_transaction_003_ecdsa() {
-        run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+        run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_003.json");
     }
 
     #[test]
     fn test_zero_access_list_transaction_003_hash() {
-        run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_002.json");
+        run_ecdsa_test::<AccessListTransaction>("./test/zero_eip_2718_003.json");
+    }
+
+    // TX ZERO FEE MARKET 001
+
+    #[test]
+    fn test_zero_fee_market_transaction_001() {
+        run_signing_test::<FeeMarketTransaction>("./test/zero_eip_1559_001.json");
+    }
+
+    #[test]
+    fn test_zero_fee_market_transaction_001_ecdsa() {
+        run_ecdsa_test::<FeeMarketTransaction>("./test/zero_eip_1559_001.json");
+    }
+
+    #[test]
+    fn test_zero_fee_market_transaction_001_hash() {
+        run_ecdsa_test::<FeeMarketTransaction>("./test/zero_eip_1559_001.json");
+    }
+
+    // TX ZERO FEE MARKET 002
+
+    #[test]
+    fn test_zero_fee_market_transaction_002() {
+        run_signing_test::<FeeMarketTransaction>("./test/zero_eip_1559_002.json");
+    }
+
+    #[test]
+    fn test_zero_fee_market_transaction_002_ecdsa() {
+        run_ecdsa_test::<FeeMarketTransaction>("./test/zero_eip_1559_002.json");
+    }
+
+    #[test]
+    fn test_zero_fee_market_transaction_002_hash() {
+        run_ecdsa_test::<FeeMarketTransaction>("./test/zero_eip_1559_002.json");
+    }
+
+    // TX ZERO FEE MARKET 003
+
+    #[test]
+    fn test_zero_fee_market_transaction_003() {
+        run_signing_test::<FeeMarketTransaction>("./test/zero_eip_1559_003.json");
+    }
+
+    #[test]
+    fn test_zero_fee_market_transaction_003_ecdsa() {
+        run_ecdsa_test::<FeeMarketTransaction>("./test/zero_eip_1559_003.json");
+    }
+
+    #[test]
+    fn test_zero_fee_market_transaction_003_hash() {
+        run_ecdsa_test::<FeeMarketTransaction>("./test/zero_eip_1559_003.json");
     }
 
     // Serialization tests
+
+    // ACCESS LIST SERIALIZATION
 
     #[test]
     fn test_serde_random_access_list_transaction_001() {
@@ -843,6 +961,29 @@ mod test {
         run_serialization_deserialization_test::<AccessListTransaction>(
             "./test/random_eip_2930_003.json",
         );
+    }
+
+    // FEE MARKET SERIALIZATION
+
+    #[test]
+    fn test_serde_random_fee_market_transaction_001() {
+      run_serialization_deserialization_test::<FeeMarketTransaction>(
+        "./test/random_eip_1559_001.json",
+      );
+    }
+
+    #[test]
+    fn test_serde_random_fee_market_transaction_002() {
+      run_serialization_deserialization_test::<FeeMarketTransaction>(
+        "./test/random_eip_1559_002.json",
+      );
+    }
+
+    #[test]
+    fn test_serde_random_fee_market_transaction_003() {
+      run_serialization_deserialization_test::<FeeMarketTransaction>(
+        "./test/random_eip_1559_003.json",
+      );
     }
 
     fn run_serialization_deserialization_test<
@@ -871,7 +1012,7 @@ mod test {
 
     // TODO refactor some of the below
 
-    fn run_signing_test<T: Transaction + serde::de::DeserializeOwned>(path: &str) {
+    fn run_signing_test<T: Transaction + Debug + serde::de::DeserializeOwned>(path: &str) {
         let mut file = File::open(path).unwrap_or_else(|_| panic!("Failed to open: {}", path));
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
