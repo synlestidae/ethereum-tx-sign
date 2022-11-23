@@ -13,7 +13,7 @@ serde = "^1.0"
 serde_derive = "^1.0"
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 secp256k1 = {version = "0.24.1", features = ["recovery"] }
-rlp = "0.5.1"
+rlp = "0.5.2"
 num-traits = "0.2"
 bytes = "^1"
 hex = "0.4.3"
