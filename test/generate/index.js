@@ -1,16 +1,19 @@
 const Common = require('@ethereumjs/common').default;
 const { Chain, Hardfork } = require('@ethereumjs/common')
-const { AccessListEIP2930Transaction, Transaction } = require('@ethereumjs/tx');
+const { AccessListEIP2930Transaction, Transaction, FeeMarketEIP1559Transaction } = require('@ethereumjs/tx');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 const { randomBytes } = require('crypto');
 const fs = require('fs');
 
 const common = new Common({ chain: Chain.Mainnet, hardfork: Hardfork.Berlin });
+const common1559 = new Common({ chain: Chain.Mainnet, hardfork: Hardfork.Merge, eips: [1559] });
 
 const LEGACY = 'legacy';
 const ACCESS_LIST = 'accesslist';
 const ACCESS_LIST_TYPE = "0x01";
+const FEE_MARKET = 'feemarket';
+const FEE_MARKET_TYPE = "0x02";
 
 const params = yargs(hideBin(process.argv))
   .option('random', {
@@ -26,7 +29,7 @@ const params = yargs(hideBin(process.argv))
     description: 'Type of transaction',
 		demandOption: true,
 		default: 'legacy',
-		choices: [LEGACY, ACCESS_LIST]
+		choices: [LEGACY, ACCESS_LIST, FEE_MARKET]
   })
   .option('number', {
     alias: 'n',
@@ -70,7 +73,7 @@ function fileScenarios({ file }) {
 
 function randomScenario(type) {
 	// TODO make this support all transactions
-	
+
 	if (type === LEGACY) {
 		return {
 			transaction: {
@@ -84,22 +87,8 @@ function randomScenario(type) {
 			},
 			privateKey: '0x' + randomBytes(32).toString('hex')
 		};
-	} else {
-		const accessList = [];
-
-		for (let i = 0; i < 1 + Math.floor(randInt(10)); i++) {
-			const address = '0x' + randomBytes(20).toString('hex');
-			const storageKeys = [];
-			
-			for (let j = 0; j < 1 + Math.floor(randInt(5)); j++) {
-				storageKeys.push('0x' + randomBytes(32).toString('hex'));
-			}
-
-			accessList.push({
-				address,
-				storageKeys
-			});
-		}
+	} else if (type === ACCESS_LIST) {
+		const accessList = generateRandomAccessList()
 
 		return {
 			transaction: {
@@ -115,7 +104,51 @@ function randomScenario(type) {
 			},
 			privateKey: '0x' + randomBytes(32).toString('hex')
 		};
+	} else if (type === FEE_MARKET) {
+        const accessList = generateRandomAccessList()
+
+        let maxPriorityFeePerGas = randHexInt(0xFFFFFFFF)
+        let maxFeePerGas = randHexInt(0xFFFFFFFF)
+
+        ;[maxPriorityFeePerGas, maxFeePerGas] = maxFeePerGas > maxPriorityFeePerGas ?
+          [maxPriorityFeePerGas, maxFeePerGas] : [maxFeePerGas, maxPriorityFeePerGas]
+
+		return {
+			transaction: {
+				"data": randomBytes(1024),
+				"gasLimit": randHexInt(0xFFFFFFFF),
+				"maxPriorityFeePerGas": maxPriorityFeePerGas,
+				"maxFeePerGas": maxFeePerGas,
+				"nonce": randHexInt(0xFFFFF),
+				"to": '0x' + randomBytes(20).toString('hex'),
+				"value": Number.MAX_SAFE_INTEGER,
+				"chain": 0x01,
+				accessList,
+				"type": FEE_MARKET_TYPE
+			},
+			privateKey: '0x' + randomBytes(32).toString('hex')
+		};
 	}
+}
+
+function generateRandomAccessList() {
+  const accessList = [];
+
+  for (let i = 0; i < 1 + Math.floor(randInt(10)); i++) {
+    const address = '0x' + randomBytes(20).toString('hex');
+    const storageKeys = [];
+
+    for (let j = 0; j < 1 + Math.floor(randInt(5)); j++) {
+      storageKeys.push('0x' + randomBytes(32).toString('hex'));
+    }
+
+    accessList.push({
+      address,
+      storageKeys
+    });
+  }
+
+  return accessList
 }
 
 function randHexInt(n) {
@@ -143,8 +176,11 @@ function processScenario(params) {
 	}
 	const originalPrivateKey = privateKey;
 	let tx;
+    transaction.gasLimit = transaction.gas || transaction.gasLimit
 	if (transaction.type === '0x01') {
 		tx = AccessListEIP2930Transaction.fromTxData(transaction, { common });
+	} else if (transaction.type === '0x02') {
+		tx = FeeMarketEIP1559Transaction.fromTxData(transaction, { common: common1559 });
 	} else {
 		tx = Transaction.fromTxData(transaction, { common });
 	}
@@ -182,9 +218,6 @@ function processScenario(params) {
 const scenarios = getScenarios(params);
 let processedScenarios = processScenarios(scenarios);
 for (let s of processedScenarios) {
-	if (s.input.data) {
-		s.input.data = '0x' + s.input.data.toString('hex');
-	}
 	s.input.gas = s.input.gasLimit || s.input.gas;
 	delete s.input.gasLimit;
 }
