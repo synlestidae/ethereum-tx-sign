@@ -1,0 +1,22 @@
+{
+  "input": {
+    "maxPriorityFeePerGas": 0,
+    "maxFeePerGas": 1,
+    "gas": 0,
+    "nonce": 0,
+    "to": null,
+    "value": 0,
+    "chain": 1,
+    "type": "0x02",
+    "data": "0x",
+    "accessList": []
+  },
+  "privateKey": "0x0000000000000000000000000000000000000000000000000000000000000001",
+  "output": {
+    "v": 0,
+    "r": "0x2f74f9c5eb6039d043a8179c6c36c3bf34cf6ed8c6e9f7a62f7b568583192c13",
+    "s": "0x32b545d5540108b5bbf5a43c476af9c10981b349a96d5d3d12e9cb4e388c812c",
+    "hash": "0x9ec693af832da7f6c5c962c7d40e3dcde2a94b05caf4485249f3d58580fc2c75",
+    "bytes": "0x02f84c0180800180808080c080a02f74f9c5eb6039d043a8179c6c36c3bf34cf6ed8c6e9f7a62f7b568583192c13a032b545d5540108b5bbf5a43c476af9c10981b349a96d5d3d12e9cb4e388c812c"
+  }
+}
