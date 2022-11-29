@@ -9,7 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@ethereumjs/tx": "^3.5.1",
+    "@ethereumjs/tx": "^4.0.0",
     "yargs": "^17.4.1"
   }
 }
