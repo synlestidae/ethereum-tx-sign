@@ -51,8 +51,6 @@ pub trait Transaction {
             rlp_bytes.insert(0usize, tt);
         }
 
-        dbg!(hex::encode(&rlp_bytes));
-
         keccak256_hash(&rlp_bytes)
     }
 
