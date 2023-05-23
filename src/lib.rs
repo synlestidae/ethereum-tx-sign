@@ -51,8 +51,6 @@ pub trait Transaction {
             rlp_bytes.insert(0usize, tt);
         }
 
-        dbg!(hex::encode(&rlp_bytes));
-
         keccak256_hash(&rlp_bytes)
     }
 
@@ -1076,14 +1074,12 @@ mod test {
         T: std::fmt::Debug,
     {
         let mut file = File::open(&path).unwrap_or_else(|_| panic!("Failed to open: {}", path));
-        dbg!(path);
         let mut f_string = String::new();
         file.read_to_string(&mut f_string).unwrap();
 
         let values: HashMap<String, serde_json::Value> = serde_json::from_str(&f_string).unwrap();
 
         let transaction: T = serde_json::from_value(values["input"].clone()).unwrap();
-        dbg!(&values);
         let expected_hash = match &values["output"]["hash"] {
             serde_json::Value::String(ref h) => h.clone().replace("0x", ""),
             serde_json::Value::Null => panic!("Test is missing `hash`"),
