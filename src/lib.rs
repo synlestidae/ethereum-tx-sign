@@ -458,65 +458,63 @@ const EIP_1559_TYPE: u8 = 0x02;
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 /// [EIP-1559](https://eips.ethereum.org/EIPS/eip-1559) fee market transaction.
 pub struct FeeMarketTransaction {
-    /// Chain ID
-    pub chain: u64,
-    /// Nonce
-    pub nonce: u128,
-    /// Gas price
-    #[serde(rename = "maxPriorityFeePerGas")]
-    pub max_priority_fee_per_gas: u128,
-    #[serde(rename = "maxFeePerGas")]
-    pub max_fee_per_gas: u128,
-    /// Gas limit
-    #[serde(alias = "gasLimit")]
-    pub gas: u128,
-    /// Recipient (None when contract creation)
-    #[serde(serialize_with = "option_array_u8_serialize")]
-    #[serde(deserialize_with = "option_array_u8_deserialize")]
-    #[serde(default)]
-    pub to: Option<[u8; 20]>,
-    /// Transfered value
-    pub value: u128,
-    /// Input data
-    #[serde(serialize_with = "slice_u8_serialize")]
-    #[serde(deserialize_with = "slice_u8_deserialize")]
-    #[serde(default)]
-    pub data: Vec<u8>,
-    /// List of addresses and storage keys the transaction plans to access
-    #[serde(rename = "accessList")]
-    pub access_list: AccessList,
+  /// Chain ID
+  pub chain: u64,
+  /// Nonce
+  pub nonce: u128,
+  /// Gas price
+  #[serde(rename = "maxPriorityFeePerGas")]
+  pub max_priority_fee_per_gas: u128,
+  #[serde(rename = "maxFeePerGas")]
+  pub max_fee_per_gas: u128,
+  /// Gas limit
+  #[serde(alias = "gasLimit")]
+  pub gas: u128,
+  /// Recipient (None when contract creation)
+  #[serde(serialize_with = "option_array_u8_serialize")]
+  #[serde(deserialize_with = "option_array_u8_deserialize")]
+  #[serde(default)]
+  pub to: Option<[u8; 20]>,
+  /// Transfered value
+  pub value: u128,
+  /// Input data
+  #[serde(serialize_with = "slice_u8_serialize")]
+  #[serde(deserialize_with = "slice_u8_deserialize")]
+  #[serde(default)]
+  pub data: Vec<u8>,
+  /// List of addresses and storage keys the transaction plans to access
+  #[serde(rename = "accessList")]
+  pub access_list: AccessList,
 }
 
 impl Transaction for FeeMarketTransaction {
-    fn chain(&self) -> u64 {
-        self.chain
-    }
+  fn chain(&self) -> u64 { self.chain }
 
-    fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
-        sign_bytes(Some(EIP_1559_TYPE), ecdsa, self)
-    }
+  fn sign(&self, ecdsa: &EcdsaSig) -> Vec<u8> {
+    sign_bytes(Some(EIP_1559_TYPE), ecdsa, self)
+  }
 
-    fn rlp_parts(&self) -> Vec<Box<dyn Encodable>> {
-        let to: Vec<u8> = match self.to {
-            Some(ref to) => to.to_vec(),
-            None => vec![],
-        };
-        vec![
-            Box::new(self.chain),
-            Box::new(self.nonce),
-            Box::new(self.max_priority_fee_per_gas),
-            Box::new(self.max_fee_per_gas),
-            Box::new(self.gas),
-            Box::new(to),
-            Box::new(self.value),
-            Box::new(self.data.clone()),
-            Box::new(self.access_list.clone()),
-        ]
-    }
+  fn rlp_parts(&self) -> Vec<Box<dyn Encodable>> {
+    let to: Vec<u8> = match self.to {
+      Some(ref to) => to.to_vec(),
+      None => vec![],
+    };
+    vec![
+      Box::new(self.chain),
+      Box::new(self.nonce),
+      Box::new(self.max_priority_fee_per_gas),
+      Box::new(self.max_fee_per_gas),
+      Box::new(self.gas),
+      Box::new(to),
+      Box::new(self.value),
+      Box::new(self.data.clone()),
+      Box::new(self.access_list.clone()),
+    ]
+  }
 
-    fn transaction_type() -> Option<u8> {
-        Some(EIP_1559_TYPE)
-    }
+  fn transaction_type() -> Option<u8> {
+    Some(EIP_1559_TYPE)
+  }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -566,9 +564,7 @@ fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        AccessListTransaction, EcdsaSig, FeeMarketTransaction, LegacyTransaction, Transaction,
-    };
+    use crate::{AccessListTransaction, EcdsaSig, LegacyTransaction, Transaction, FeeMarketTransaction};
 
     use serde_json;
     use std::collections::HashMap;
@@ -709,7 +705,7 @@ mod test {
 
     #[test]
     fn test_random_legacy_002_hash() {
-        run_hash_test::<LegacyTransaction>("./test/random_legacy_002.json");
+      run_hash_test::<LegacyTransaction>("./test/random_legacy_002.json");
     }
 
     // TX RANDOM LEGACY 003
@@ -981,23 +977,23 @@ mod test {
 
     #[test]
     fn test_serde_random_fee_market_transaction_001() {
-        run_serialization_deserialization_test::<FeeMarketTransaction>(
-            "./test/random_eip_1559_001.json",
-        );
+      run_serialization_deserialization_test::<FeeMarketTransaction>(
+        "./test/random_eip_1559_001.json",
+      );
     }
 
     #[test]
     fn test_serde_random_fee_market_transaction_002() {
-        run_serialization_deserialization_test::<FeeMarketTransaction>(
-            "./test/random_eip_1559_002.json",
-        );
+      run_serialization_deserialization_test::<FeeMarketTransaction>(
+        "./test/random_eip_1559_002.json",
+      );
     }
 
     #[test]
     fn test_serde_random_fee_market_transaction_003() {
-        run_serialization_deserialization_test::<FeeMarketTransaction>(
-            "./test/random_eip_1559_003.json",
-        );
+      run_serialization_deserialization_test::<FeeMarketTransaction>(
+        "./test/random_eip_1559_003.json",
+      );
     }
 
     fn run_serialization_deserialization_test<
