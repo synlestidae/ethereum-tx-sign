@@ -209,7 +209,7 @@ pub struct Access {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 /// [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930) access list.
-pub struct AccessList(Vec<Access>);
+pub struct AccessList(pub Vec<Access>);
 
 impl Encodable for AccessList {
     /// Encodes the access list according to [EIP-2930](https://eips.ethereum.org/EIPS/eip-2930).
