@@ -8,7 +8,7 @@ extern crate hex;
 extern crate num_traits;
 extern crate rlp;
 extern crate secp256k1;
-extern crate tiny_keccak;
+extern crate sha3;
 
 #[cfg(test)]
 extern crate ethereum_types;
@@ -21,7 +21,7 @@ use serde::de::Error as SerdeErr;
 use serde::ser::SerializeSeq;
 use serde::Deserialize;
 use std::convert::TryInto;
-use tiny_keccak::{Hasher, Keccak};
+use sha3::{Keccak256, Digest};
 
 /// Ethereum transaction
 pub trait Transaction {
@@ -555,11 +555,9 @@ impl EcdsaSig {
 }
 
 fn keccak256_hash(bytes: &[u8]) -> [u8; 32] {
-    let mut hasher = Keccak::v256();
+    let mut hasher = Keccak256::new();
     hasher.update(bytes);
-    let mut resp: [u8; 32] = Default::default();
-    hasher.finalize(&mut resp);
-    resp
+    hasher.finalize().into()
 }
 
 #[cfg(test)]
